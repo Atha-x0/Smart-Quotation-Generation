@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+
+model Quotation {
+  id              String          @id @default(uuid())
+  quotation_no    String
+  revision_index  Int             @default(0)
+  revision_label  String          @default("0")
+  client_name     String
+  client_address  String?
+  client_contact  String?
+  validity_date   DateTime?
+  subject         String?
+  taxable_amount  Decimal         @default(0) @db.Decimal(12, 2)
+  total_amount    Decimal         @default(0) @db.Decimal(12, 2)
+  status          String          @default("Draft") // Draft / Sent / Expired / Accepted / Converted
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  
+  items           QuotationItem[]
+  content_blocks  ContentBlock[]
+  pdf_hash        String?
+  client_timestamp DateTime?
+
+  @@unique([quotation_no, revision_index])
+}
+
+model QuotationItem {
+  id              String    @id @default(uuid())
+  quotation_id    String
+  item_name       String
+  description     String?
+  hsn_sac_code    String?
+  quantity        Decimal   @db.Decimal(12, 2)
+  rate            Decimal   @db.Decimal(12, 2)
+  taxable_amount  Decimal   @db.Decimal(12, 2)
+  discount        Decimal   @default(0) @db.Decimal(12, 2)
+  
+  quotation       Quotation @relation(fields: [quotation_id], references: [id], onDelete: Cascade)
+}
+
+model ContentBlock {
+  id              String    @id @default(uuid())
+  quotation_id    String
+  block_type      String    // scope_of_work / technical_spec / terms_conditions
+  source          String    // library / excel / manual
+  title           String
+  content         String    @db.Text
+  category_tag    String?
+  sort_order      Int       @default(0)
+
+  quotation       Quotation @relation(fields: [quotation_id], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  username        String
+  role            String
+  action          String
+  quotation_no    String?
+  timestamp       DateTime @default(now())
+}
