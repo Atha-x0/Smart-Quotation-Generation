@@ -321,6 +321,7 @@ export default function SmartQuotationSystem() {
   const [isOnline, setIsOnline] = useState(true);
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
   const [isRevisionMode, setIsRevisionMode] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   
   // Diff target selection
   const [diffBaseIndex, setDiffBaseIndex] = useState<number>(0);
@@ -409,7 +410,7 @@ export default function SmartQuotationSystem() {
 
   const handleViewClick = (quote: any) => {
     setSelectedQuote(quote);
-    setActiveTab('view');
+    setShowPreviewModal(true);
   };
 
   const handleHistoryClick = async (quotationNo: string) => {
@@ -1531,35 +1532,170 @@ export default function SmartQuotationSystem() {
           </form>
         )}
 
-        {/* 3. DETAILED VIEW */}
-        {activeTab === 'view' && selectedQuote && (
-          <div className="max-w-4xl mx-auto space-y-8">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-6">
-              <div className="flex items-center space-x-3">
+        {/* 3. PREVIEW POPUP MODAL */}
+        {showPreviewModal && selectedQuote && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
+                <div className="flex items-center space-x-3">
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-lg font-semibold text-white">{selectedQuote.quotation_no}</h2>
+                      <span className="bg-indigo-950/60 text-indigo-300 text-xs font-mono px-2 py-0.5 rounded-md border border-indigo-800">
+                        Revision Index: {selectedQuote.revision_index} ({selectedQuote.revision_label})
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">Created on {new Date(selectedQuote.created_at).toLocaleString()}</p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('dashboard')}
-                  className="p-2 bg-slate-900 rounded-xl hover:bg-slate-800"
+                  onClick={() => setShowPreviewModal(false)}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors"
                 >
-                  <ArrowLeft className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </button>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <h2 className="text-xl font-semibold">{selectedQuote.quotation_no}</h2>
-                    <span className="bg-indigo-950/60 text-indigo-300 text-xs font-mono px-2 py-0.5 rounded-md border border-indigo-800">
-                      Revision Index: {selectedQuote.revision_index} ({selectedQuote.revision_label})
-                    </span>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-2 space-y-6">
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Client Details</h3>
+                      <div className="space-y-1.5 text-sm text-slate-200">
+                        <p className="font-semibold text-white">{selectedQuote.client_name}</p>
+                        {selectedQuote.client_contact && (
+                          <p className="flex items-center text-slate-400 text-xs">
+                            <Phone className="h-3 w-3 mr-1.5" /> {selectedQuote.client_contact}
+                          </p>
+                        )}
+                        {selectedQuote.client_address && (
+                          <p className="flex items-start text-slate-400 text-xs">
+                            <MapPin className="h-3 w-3 mr-1.5 mt-0.5" /> {selectedQuote.client_address}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedQuote.subject && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Subject / Reference</h3>
+                        <p className="text-sm text-slate-200 bg-slate-950 p-3 rounded-xl border border-slate-800 font-medium">
+                          {selectedQuote.subject}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Line Items Table */}
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Line Items</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-950 text-slate-400 uppercase tracking-wider font-semibold border border-slate-800">
+                              <th className="p-3">Item Name</th>
+                              <th className="p-3">HSN/SAC</th>
+                              <th className="p-3 text-right">Qty</th>
+                              <th className="p-3 text-right">Rate</th>
+                              <th className="p-3 text-right">Disc.</th>
+                              <th className="p-3 text-right">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800 border-x border-b border-slate-800">
+                            {(selectedQuote.items || []).map((item: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-slate-850/30">
+                                <td className="p-3">
+                                  <p className="font-semibold text-slate-200">{item.item_name}</p>
+                                  {item.description && <p className="text-[10px] text-slate-400 mt-0.5">{item.description}</p>}
+                                </td>
+                                <td className="p-3 font-mono text-slate-300">{item.hsn_sac_code || '-'}</td>
+                                <td className="p-3 text-right text-slate-300">{Number(item.quantity)}</td>
+                                <td className="p-3 text-right text-slate-300">₹{Number(item.rate).toFixed(2)}</td>
+                                <td className="p-3 text-right text-slate-400">₹{Number(item.discount || 0).toFixed(2)}</td>
+                                <td className="p-3 text-right font-semibold text-indigo-400">
+                                  ₹{(Number(item.quantity) * Number(item.rate) - Number(item.discount || 0)).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Content Blocks */}
+                    {selectedQuote.content_blocks && selectedQuote.content_blocks.length > 0 && (
+                      <div className="space-y-4">
+                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Scope & Terms Blocks</h3>
+                        <div className="space-y-4">
+                          {(selectedQuote.content_blocks || []).map((cb: any, idx: number) => (
+                            <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                              <div className="flex justify-between items-center mb-2">
+                                <h4 className="text-xs font-bold text-slate-300">{cb.title}</h4>
+                                <span className="text-[9px] text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded-full border border-indigo-900/60 uppercase font-mono font-bold">
+                                  {cb.block_type.replace('_', ' ')}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-300 font-sans mt-2 leading-relaxed prose prose-invert prose-sm" dangerouslySetInnerHTML={{ __html: cb.content }} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">Created on {new Date(selectedQuote.created_at).toLocaleString()}</p>
+
+                  {/* Sidebar Summary */}
+                  <div className="space-y-6">
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-6">
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Quotation Status</h3>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <span className="block text-[10px] text-slate-400">Quote Status</span>
+                          <span className={`inline-block text-xs px-2.5 py-1 rounded-full font-semibold border mt-1 ${
+                            selectedQuote.sync_status === 'pending' ? 'bg-amber-950/40 text-amber-400 border-amber-800' :
+                            selectedQuote.status === 'Draft' ? 'bg-amber-950/40 text-amber-400 border-amber-800/40' :
+                            selectedQuote.status === 'Sent' ? 'bg-sky-950/40 text-sky-400 border-sky-800/40' :
+                            selectedQuote.status === 'Accepted' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/40' :
+                            'bg-slate-800/80 text-slate-400 border-slate-700'
+                          }`}>
+                            {selectedQuote.sync_status === 'pending' ? 'Sync Pending' : selectedQuote.status}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-[10px] text-slate-400">Validity Date</span>
+                          <span className="text-sm font-semibold text-slate-200">
+                            {selectedQuote.validity_date ? new Date(selectedQuote.validity_date).toLocaleDateString() : 'No Limit'}
+                          </span>
+                        </div>
+
+                        <div className="border-t border-slate-800 pt-4 space-y-3">
+                          <div>
+                            <span className="block text-[10px] text-slate-400">Subtotal Taxable</span>
+                            <span className="text-sm font-semibold text-slate-200">₹{Number(selectedQuote.taxable_amount).toLocaleString('en-IN')}</span>
+                          </div>
+      
+                          <div>
+                            <span className="block text-[10px] text-indigo-400 font-semibold">Total Rounded Value</span>
+                            <span className="text-2xl font-bold text-white">₹{Number(selectedQuote.total_amount).toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-3">
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-slate-800 bg-slate-900/50">
                 {selectedQuote.sync_status === 'pending' ? (
                   <button
                     disabled
-                    className="bg-indigo-600/40 text-white/60 text-xs font-semibold px-4 py-2 rounded-xl flex items-center space-x-1.5 cursor-not-allowed"
+                    className="bg-indigo-600/40 text-white/60 text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 cursor-not-allowed"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <Download className="h-4 w-4" />
                     <span>Download PDF</span>
                   </button>
                 ) : (
@@ -1567,151 +1703,40 @@ export default function SmartQuotationSystem() {
                     href={`${API_BASE}/quotations/${selectedQuote.quotation_no}/${selectedQuote.revision_label}/download`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center space-x-1.5 transition-colors"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 transition-colors"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <Download className="h-4 w-4" />
                     <span>View/Download PDF</span>
                   </a>
                 )}
                 <button
-                  onClick={() => handleEditRevisionClick(selectedQuote)}
+                  type="button"
+                  onClick={() => { setShowPreviewModal(false); handleEditRevisionClick(selectedQuote); }}
                   disabled={selectedQuote.sync_status === 'pending'}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center space-x-1.5 disabled:opacity-40"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 disabled:opacity-40"
                 >
                   <Edit className="h-3.5 w-3.5" />
                   <span>Create Revision</span>
                 </button>
                 <button
-                  onClick={() => handleHistoryClick(selectedQuote.quotation_no)}
+                  type="button"
+                  onClick={() => { setShowPreviewModal(false); handleHistoryClick(selectedQuote.quotation_no); }}
                   disabled={selectedQuote.sync_status === 'pending'}
-                  className="bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold px-4 py-2 rounded-xl flex items-center space-x-1.5 disabled:opacity-40"
+                  className="bg-slate-900 hover:bg-slate-850 border border-slate-850 text-slate-200 text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center space-x-1.5 disabled:opacity-40"
                 >
                   <History className="h-3.5 w-3.5" />
                   <span>All Revisions</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Quote details */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:col-span-2 space-y-6">
-                <div>
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Client Details</h3>
-                  <div className="space-y-1.5 text-sm text-slate-200">
-                    <p className="font-semibold text-white">{selectedQuote.client_name}</p>
-                    {selectedQuote.client_contact && <p className="flex items-center text-slate-400 text-xs"><Phone className="h-3 w-3 mr-1.5" /> {selectedQuote.client_contact}</p>}
-                    {selectedQuote.client_address && <p className="flex items-start text-slate-400 text-xs"><MapPin className="h-3 w-3 mr-1.5 mt-0.5" /> {selectedQuote.client_address}</p>}
-                  </div>
-                </div>
-
-                {selectedQuote.subject && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Subject / Reference</h3>
-                    <p className="text-sm text-slate-200 bg-slate-950 p-3 rounded-xl border border-slate-800 font-medium">
-                      {selectedQuote.subject}
-                    </p>
-                  </div>
-                )}
-
-                {/* Line Items Table */}
-                <div>
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Line Items</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-950 text-slate-400 uppercase tracking-wider font-semibold border border-slate-800">
-                          <th className="p-3">Item Name</th>
-                          <th className="p-3">HSN/SAC</th>
-                          <th className="p-3 text-right">Qty</th>
-                          <th className="p-3 text-right">Rate</th>
-                          <th className="p-3 text-right">Disc.</th>
-                          <th className="p-3 text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800 border-x border-b border-slate-800">
-                        {(selectedQuote.items || []).map((item: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-850/30">
-                            <td className="p-3">
-                              <p className="font-semibold text-slate-200">{item.item_name}</p>
-                              {item.description && <p className="text-[10px] text-slate-400 mt-0.5">{item.description}</p>}
-                            </td>
-                            <td className="p-3 font-mono text-slate-300">{item.hsn_sac_code || '-'}</td>
-                            <td className="p-3 text-right text-slate-300">{Number(item.quantity)}</td>
-                            <td className="p-3 text-right text-slate-300">₹{Number(item.rate).toFixed(2)}</td>
-                            <td className="p-3 text-right text-slate-400">₹{Number(item.discount || 0).toFixed(2)}</td>
-                            <td className="p-3 text-right font-semibold text-indigo-400">
-                              ₹{(Number(item.quantity) * Number(item.rate) - Number(item.discount || 0)).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Content Blocks */}
-                {selectedQuote.content_blocks && selectedQuote.content_blocks.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Scope & Terms Blocks</h3>
-                    <div className="space-y-4">
-                      {(selectedQuote.content_blocks || []).map((cb: any, idx: number) => (
-                        <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="text-xs font-bold text-slate-300">{cb.title}</h4>
-                            <span className="text-[9px] text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded-full border border-indigo-900/60 uppercase font-mono font-bold">
-                              {cb.block_type.replace('_', ' ')}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-300 font-sans mt-2 leading-relaxed prose prose-invert prose-sm" dangerouslySetInnerHTML={{ __html: cb.content }} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Sidebar Summary */}
-              <div className="space-y-6">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-2">Quotation Status</h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <span className="block text-[10px] text-slate-400">Quote Status</span>
-                      <span className={`inline-block text-xs px-2.5 py-1 rounded-full font-semibold border mt-1 ${
-                        selectedQuote.sync_status === 'pending' ? 'bg-amber-950/40 text-amber-400 border-amber-800' :
-                        selectedQuote.status === 'Draft' ? 'bg-amber-950/40 text-amber-400 border-amber-800/40' :
-                        selectedQuote.status === 'Sent' ? 'bg-sky-950/40 text-sky-400 border-sky-800/40' :
-                        selectedQuote.status === 'Accepted' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/40' :
-                        'bg-slate-800/80 text-slate-400 border-slate-700'
-                      }`}>
-                        {selectedQuote.sync_status === 'pending' ? 'Sync Pending' : selectedQuote.status}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="block text-[10px] text-slate-400">Validity Date</span>
-                      <span className="text-sm font-semibold text-slate-200">
-                        {selectedQuote.validity_date ? new Date(selectedQuote.validity_date).toLocaleDateString() : 'No Limit'}
-                      </span>
-                    </div>
-
-                    <div className="border-t border-slate-800 pt-4">
-                     <div>
-                       <span className="block text-[10px] text-slate-400">Subtotal Taxable</span>
-                       <span className="text-sm font-semibold text-slate-200">₹{Number(selectedQuote.taxable_amount).toLocaleString('en-IN')}</span>
-                     </div>
- 
-                     <div>
-                       <span className="block text-[10px] text-indigo-400 font-semibold">Total Rounded Value</span>
-                       <span className="text-2xl font-bold text-white">₹{Number(selectedQuote.total_amount).toLocaleString('en-IN')}</span>
-                     </div>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewModal(false)}
+                  className="bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-semibold px-4 py-2.5 rounded-xl"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
-        </div>
         )}
 
         {/* 4. REVISION HISTORY & DIFF COMPARISON VIEW */}
