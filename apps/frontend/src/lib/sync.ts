@@ -1,6 +1,8 @@
 import { db } from './db';
 
-const API_BASE = 'http://127.0.0.1:5000/api';
+const API_BASE = typeof window !== 'undefined'
+  ? `http://${window.location.hostname}:5000/api`
+  : 'http://127.0.0.1:5000/api';
 
 function getAuthHeaders(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -119,5 +121,27 @@ export async function fetchLatestFromServer() {
     }
   } catch (err) {
     console.error('Failed to fetch from server:', err);
+  }
+}
+
+export async function syncHsnCodes() {
+  if (typeof window === 'undefined' || !navigator.onLine) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/hsn-codes`, {
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data) && data.length > 0) {
+        await db.hsnCodes.clear();
+        await db.hsnCodes.bulkAdd(data);
+        console.log(`Synced ${data.length} HSN codes from server.`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to sync HSN codes:', err);
   }
 }

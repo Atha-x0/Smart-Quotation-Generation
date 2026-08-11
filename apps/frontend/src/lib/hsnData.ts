@@ -2,6 +2,7 @@ export interface HsnCode {
   id: string;
   code: string;
   description: string;
+  itemNameMatch?: string;
 }
 
 export const HSN_SEED_DATA: HsnCode[] = [

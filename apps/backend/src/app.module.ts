@@ -8,10 +8,12 @@ import { QueueService } from './queue.service';
 import { PdfService } from './pdf.service';
 import { AuditService } from './audit.service';
 import { RolesGuard } from './roles.guard';
+import { HsnService } from './hsn.service';
+import { HsnController } from './hsn.controller';
 
 @Module({
   imports: [],
-  controllers: [AppController, QuotationController],
+  controllers: [AppController, QuotationController, HsnController],
   providers: [
     AppService,
     PrismaService,
@@ -20,6 +22,7 @@ import { RolesGuard } from './roles.guard';
     PdfService,
     AuditService,
     RolesGuard,
+    HsnService,
   ],
 })
 export class AppModule {}

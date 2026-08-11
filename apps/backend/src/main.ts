@@ -5,10 +5,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
-  // Enable CORS for frontend integration
   app.enableCors({
-    origin: '*', // For development purposes
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: 'Content-Type,Accept,Authorization,X-User-Role,X-User-Name',
     credentials: true,
   });
 
