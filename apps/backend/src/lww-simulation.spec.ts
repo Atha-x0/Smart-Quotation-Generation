@@ -105,7 +105,7 @@ describe('Last-Write-Wins (LWW) Sync Conflict Resolution & Auditing', () => {
       role: 'SalesRep',
     });
 
-    expect(Number(syncBResult.total_amount)).toBe(200);
+    expect(Number(syncBResult.total_amount)).toBe(236);
 
     // 5. Edit A (outdated sync) arrives later
     const syncAResult = await service.createRevision(qNo, editAPayload, {
@@ -114,8 +114,8 @@ describe('Last-Write-Wins (LWW) Sync Conflict Resolution & Auditing', () => {
     });
 
     // 6. Assert LWW kicked in:
-    // - Returned result from sync A is overridden and returns the winner (Edit B total value of 200)
-    expect(Number(syncAResult.total_amount)).toBe(200);
+    // - Returned result from sync A is overridden and returns the winner (Edit B total value of 236)
+    expect(Number(syncAResult.total_amount)).toBe(236);
 
     // - Verify audit log recorded the discard action
     const auditLogs = await service.getAuditLogs();

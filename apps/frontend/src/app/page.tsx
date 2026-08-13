@@ -25,9 +25,49 @@ import {
   MapPin, Phone, Tag, DollarSign, ChevronRight, X, ArrowLeft, RefreshCw, Save, CheckCircle, Wifi, WifiOff, Bold, Italic, List, ListOrdered, FileSpreadsheet, Download, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, Menu, Bell, HelpCircle, FileCheck2, AlertCircle
 } from 'lucide-react';
 
-const API_BASE = typeof window !== 'undefined'
-  ? `http://${window.location.hostname}:5000/api`
-  : 'http://127.0.0.1:5000/api';
+const host = typeof window !== 'undefined'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '[::1]' ? '127.0.0.1' : window.location.hostname)
+  : '127.0.0.1';
+const API_BASE = `http://${host}:5000/api`;
+
+const DEFAULT_TERMS_CONDITIONS = [
+  'GST shall be charged extra as applicable unless specifically stated otherwise.',
+  'Payment terms shall be as mentioned in the commercial summary of this quotation.',
+  'Delivery schedule shall commence from receipt of technically and commercially clear purchase order and agreed advance payment.',
+  'Freight and transit insurance shall be as specified in the commercial summary.',
+  'Site shall be made ready with required shutdown, access, utilities and permissions before installation activity.',
+  'Warranty shall apply against manufacturing defects for the period stated in the quotation and shall exclude misuse, external damage and consumables.',
+  'Only the activities specifically listed in the approved scope of work are included.',
+  'Civil work, major structural modification and statutory fees are excluded unless specifically included.',
+  'Any quantity or scope variation after order shall be charged additionally with prior approval.',
+  'AMC/CMC coverage is limited to the equipment and services explicitly listed in the scope.',
+  'Consumables, accidental damage and third-party equipment are excluded unless specifically included.'
+];
+
+const parseTermsFromHtml = (htmlContent: string) => {
+  if (!htmlContent) return [];
+  const liMatches = htmlContent.match(/<li>(.*?)<\/li>/g);
+  if (liMatches) {
+    return liMatches.map(li => ({
+      text: li.replace(/<\/?li>/g, '').trim(),
+      selected: true
+    }));
+  }
+  const cleaned = htmlContent
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '\n')
+    .split('\n')
+    .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+    .filter(Boolean);
+  return cleaned.map(text => ({ text, selected: true }));
+};
+
+const serializeTermsToHtml = (list: Array<{ text: string; selected: boolean }>) => {
+  const selected = list.filter(item => item.selected);
+  if (selected.length === 0) return '';
+  return `<ol>${selected.map(item => `<li>${item.text}</li>`).join('')}</ol>`;
+};
 
 // Zod validation schemas
 const ItemSchema = z.object({
@@ -280,6 +320,27 @@ export default function SmartQuotationSystem() {
   }, [quotations]);
 
   const [history, setHistory] = useState<any[]>([]);
+  const [termsList, setTermsList] = useState<Array<{ text: string; selected: boolean }>>([]);
+
+  const toggleTerm = (idx: number) => {
+    const updated = [...termsList];
+    updated[idx].selected = !updated[idx].selected;
+    setTermsList(updated);
+  };
+
+  const updateTermText = (idx: number, val: string) => {
+    const updated = [...termsList];
+    updated[idx].text = val;
+    setTermsList(updated);
+  };
+
+  const deleteTerm = (idx: number) => {
+    setTermsList(termsList.filter((_, i) => i !== idx));
+  };
+
+  const addTerm = () => {
+    setTermsList([...termsList, { text: '', selected: true }]);
+  };
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'form' | 'view' | 'history'>('dashboard');
   const [isOnline, setIsOnline] = useState(true);
@@ -317,6 +378,25 @@ export default function SmartQuotationSystem() {
   // User State
   const [userRole, setUserRole] = useState<'Admin' | 'Sales' | 'Auditor'>('Admin');
   const [userName, setUserName] = useState('Admin');
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  // Settings State
+  const [gstRate, setGstRate] = useState<number>(18);
+  const [currencySymbol, setCurrencySymbol] = useState<string>('₹');
+  const [defaultValidityDays, setDefaultValidityDays] = useState<number>(30);
+
+  // Products and Templates live queries
+  const productsList = useLiveQuery(() => db.products.toArray()) || [];
+  const templatesList = useLiveQuery(() => db.templates.toArray()) || [];
+
+  // Form States for new items
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdRate, setNewProdRate] = useState('');
+  const [newProdHsn, setNewProdHsn] = useState('');
+  const [newProdDesc, setNewProdDesc] = useState('');
+
+  const [newTempTitle, setNewTempTitle] = useState('');
+  const [newTempContent, setNewTempContent] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -324,6 +404,15 @@ export default function SmartQuotationSystem() {
       const storedName = localStorage.getItem('user-name');
       if (storedRole) setUserRole(storedRole);
       if (storedName) setUserName(storedName);
+      
+      const storedGst = localStorage.getItem('setting-gst');
+      if (storedGst) setGstRate(Number(storedGst));
+      
+      const storedCurrency = localStorage.getItem('setting-currency');
+      if (storedCurrency) setCurrencySymbol(storedCurrency);
+
+      const storedValidity = localStorage.getItem('setting-validity');
+      if (storedValidity) setDefaultValidityDays(Number(storedValidity));
     }
   }, []);
 
@@ -549,6 +638,23 @@ export default function SmartQuotationSystem() {
   }, 0);
   const totalRounded = Math.round(subtotal);
 
+  const fetchAuditLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/quotations/audit-logs`, {
+        headers: {
+          'X-User-Role': localStorage.getItem('user-role') || 'Admin',
+          'X-User-Name': localStorage.getItem('user-name') || 'Admin',
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch audit logs from backend, using local state.');
+    }
+  };
+
   useEffect(() => {
     const seedHsnData = async () => {
       const count = await db.hsnCodes.count();
@@ -556,7 +662,30 @@ export default function SmartQuotationSystem() {
         await db.hsnCodes.bulkAdd(HSN_SEED_DATA);
       }
     };
+    const seedProductsData = async () => {
+      const count = await db.products.count();
+      if (count === 0) {
+        await db.products.bulkAdd([
+          { id: '1', item_name: 'IT Consultancy Services', description: 'Expert technical infrastructure design', hsn_sac_code: '998311', rate: 5000 },
+          { id: '2', item_name: 'Premium Business Laptop', description: 'Intel i7, 16GB RAM, 512GB SSD', hsn_sac_code: '847130', rate: 65000 },
+          { id: '3', item_name: 'Enterprise Router Switch', description: '24-port managed gigabit switch', hsn_sac_code: '851762', rate: 22000 },
+          { id: '4', item_name: 'UPS Power Backup 1KVA', description: 'Double conversion online UPS', hsn_sac_code: '850440', rate: 12000 },
+        ]);
+      }
+    };
+    const seedTemplatesData = async () => {
+      const count = await db.templates.count();
+      if (count === 0) {
+        await db.templates.bulkAdd([
+          { id: '1', title: 'Standard IT Services Contract', content: 'Payment terms: 50% advance, 50% post-delivery. Support: 9am-6pm business days.' },
+          { id: '2', title: 'Hardware Sales Terms', content: 'Delivery: 1-2 weeks. Warranty: 1 year manufacturer warranty. Installation: Excluded.' },
+        ]);
+      }
+    };
+    
     seedHsnData();
+    seedProductsData();
+    seedTemplatesData();
 
     if (typeof window !== 'undefined') {
       setIsOnline(navigator.onLine);
@@ -567,6 +696,7 @@ export default function SmartQuotationSystem() {
         await syncOutbox();
         await fetchLatestFromServer();
         await syncHsnCodes();
+        await fetchAuditLogs();
         setLoading(false);
       };
 
@@ -600,6 +730,7 @@ export default function SmartQuotationSystem() {
     await syncOutbox();
     await fetchLatestFromServer();
     await syncHsnCodes();
+    await fetchAuditLogs();
     setLoading(false);
   };
 
@@ -640,14 +771,14 @@ export default function SmartQuotationSystem() {
         rate: Number(i.rate),
         discount: Number(i.discount || 0),
       })),
-      content_blocks: quote.content_blocks.map((b: any) => ({
-        block_type: b.block_type,
-        source: b.source,
-        title: b.title,
-        content: b.content,
-        sort_order: b.sort_order,
-      })),
+      content_blocks: [],
     });
+    const termsBlock = quote.content_blocks.find((b: any) => b.block_type === 'terms_conditions');
+    if (termsBlock) {
+      setTermsList(parseTermsFromHtml(termsBlock.content));
+    } else {
+      setTermsList(DEFAULT_TERMS_CONDITIONS.map(text => ({ text, selected: true })));
+    }
     setActiveTab('form');
   };
 
@@ -712,11 +843,9 @@ export default function SmartQuotationSystem() {
         rate: row.rate,
         discount: row.discount,
       })),
-      content_blocks: [
-        { block_type: 'scope_of_work', source: 'excel', title: 'Scope of Work', content: '<p>Imported via bulk template file.</p>', sort_order: 0 },
-        { block_type: 'terms_conditions', source: 'excel', title: 'Terms & Conditions', content: '<p>Standard terms apply.</p>', sort_order: 1 }
-      ]
+      content_blocks: []
     });
+    setTermsList(DEFAULT_TERMS_CONDITIONS.map(text => ({ text, selected: true })));
     setExcelPreviewData(null);
     setActiveTab('form');
   };
@@ -729,33 +858,144 @@ export default function SmartQuotationSystem() {
     reader.onload = (event) => {
       const data = new Uint8Array(event.target?.result as ArrayBuffer);
       const workbook = XLSX.read(data, { type: 'array' });
-      const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-      const validatedRows = json.map((row, idx) => {
-        const errorsList: string[] = [];
-        if (!row['Client Name']) errorsList.push('Missing Client Name');
-        if (!row['Item Name']) errorsList.push('Missing Item Name');
-        if (isNaN(Number(row['Quantity']))) errorsList.push('Invalid Quantity');
-        if (isNaN(Number(row['Rate']))) errorsList.push('Invalid Rate');
+      let clientName = '';
+      let clientAddress = '';
+      let contactPerson = '';
+      let contactPhone = '';
+      let subject = '';
+      const itemsList: any[] = [];
 
-        return {
+      let headerRowIdx = -1;
+      let particularIdx = -1;
+      let rateIdx = -1;
+      let qtyIdx = -1;
+      let hsnIdx = -1;
+
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r] || [];
+        for (let c = 0; c < row.length; c++) {
+          const cellVal = String(row[c] || '').trim();
+          
+          if (cellVal.toLowerCase() === 'to,' || cellVal.toLowerCase() === 'to:') {
+            clientName = String(row[c + 1] || '').trim();
+            const nextRow = rows[r + 1] || [];
+            clientAddress = String(nextRow[c + 1] || nextRow[c] || '').trim();
+          }
+          
+          if (cellVal.toLowerCase().includes('kind attn') || cellVal.toLowerCase().startsWith('attn:')) {
+            const contactVal = String(row[c + 1] || row[c] || '').trim().replace(/^(kind attn\.?:?|attn:?)/i, '').trim();
+            const phoneMatch = contactVal.match(/(?:mobile|phone|mob|m\.?\s*no\.?)\s*:?\s*([0-9+\s\-()]{10,15})/i);
+            if (phoneMatch) {
+              contactPhone = phoneMatch[1].replace(/[^0-9+\s\-]/g, '').trim();
+              contactPerson = contactVal.replace(phoneMatch[0], '').replace(/[()]/g, '').trim();
+            } else {
+              contactPerson = contactVal;
+            }
+          }
+
+          if (cellVal.toLowerCase().includes('ref.') || cellVal.toLowerCase().includes('subject')) {
+            subject = String(row[c + 1] || row[c + 2] || '').trim();
+          }
+        }
+
+        const rowStr = row.map(cell => String(cell || '').toLowerCase().trim());
+        const hasParticular = rowStr.some(cell => cell.includes('particular') || cell.includes('description') || cell.includes('item'));
+        const hasRate = rowStr.some(cell => cell.includes('rate') || cell.includes('price') || cell.includes('unit price'));
+        const hasQty = rowStr.some(cell => cell.includes('qty') || cell.includes('quantity') || cell.includes('nos'));
+
+        if (hasParticular && hasRate && hasQty && headerRowIdx === -1) {
+          headerRowIdx = r;
+          particularIdx = rowStr.findIndex(cell => cell.includes('particular') || cell.includes('description') || cell.includes('item'));
+          rateIdx = rowStr.findIndex(cell => cell.includes('rate') || cell.includes('price') || cell.includes('unit price'));
+          qtyIdx = rowStr.findIndex(cell => cell.includes('qty') || cell.includes('quantity') || cell.includes('nos'));
+          hsnIdx = rowStr.findIndex(cell => cell.includes('hsn') || cell.includes('sac'));
+        }
+      }
+
+      if (headerRowIdx !== -1) {
+        for (let r = headerRowIdx + 1; r < rows.length; r++) {
+          const row = rows[r] || [];
+          const itemDesc = String(row[particularIdx] || '').trim();
+          const lowerDesc = itemDesc.toLowerCase();
+          
+          if (!itemDesc || 
+              lowerDesc.includes('total') || 
+              lowerDesc.includes('gst') || 
+              lowerDesc.includes('tax') || 
+              lowerDesc.includes('terms') || 
+              lowerDesc.includes('rupees') ||
+              lowerDesc.startsWith('see-tech') ||
+              lowerDesc.includes('amount in words')) {
+            if (itemsList.length > 0 && (lowerDesc.includes('total') || lowerDesc.includes('gst') || lowerDesc.includes('tax'))) {
+              break;
+            }
+            continue;
+          }
+
+          const qty = parseFloat(String(row[qtyIdx] || '').replace(/[^0-9.]/g, ''));
+          const rate = parseFloat(String(row[rateIdx] || '').replace(/[^0-9.]/g, ''));
+
+          if (!isNaN(qty) && !isNaN(rate)) {
+            itemsList.push({
+              itemName: itemDesc,
+              quantity: qty,
+              rate: rate,
+              hsnCode: hsnIdx !== -1 ? String(row[hsnIdx] || '').trim() : '',
+              discount: 0,
+              description: ''
+            });
+          }
+        }
+      }
+
+      // If semantic parsing failed to yield items, fallback to raw sheet_to_json
+      if (itemsList.length === 0) {
+        const rawJson = XLSX.utils.sheet_to_json(worksheet) as any[];
+        const fallbackRows = rawJson.map((row, idx) => {
+          const errorsList: string[] = [];
+          const nameVal = row['Client Name'] || row['Client'] || clientName || 'Imported Client';
+          const itemVal = row['Item Name'] || row['Item'] || row['Particular'] || 'Imported Item';
+          const qVal = Number(row['Quantity'] || row['Qty'] || 1);
+          const rVal = Number(row['Rate'] || row['Price'] || 0);
+
+          return {
+            id: idx,
+            clientName: nameVal,
+            clientAddress: row['Client Address'] || clientAddress || '',
+            clientContact: row['Client Contact'] || (contactPerson ? `${contactPerson} | ${contactPhone}` : ''),
+            subject: row['Subject'] || subject || '',
+            validityDate: row['Validity Date'] || '',
+            itemName: itemVal,
+            description: row['Description'] || '',
+            hsnCode: row['HSN Code'] || row['HSN/SAC'] || '',
+            quantity: qVal,
+            rate: rVal,
+            discount: Number(row['Discount'] || 0),
+            errors: errorsList,
+          };
+        });
+        setExcelPreviewData(fallbackRows);
+      } else {
+        const mappedRows = itemsList.map((item, idx) => ({
           id: idx,
-          clientName: row['Client Name'] || '',
-          clientAddress: row['Client Address'] || '',
-          clientContact: row['Client Contact'] || '',
-          subject: row['Subject'] || '',
-          validityDate: row['Validity Date'] || '',
-          itemName: row['Item Name'] || '',
-          description: row['Description'] || '',
-          hsnCode: row['HSN Code'] || '',
-          quantity: Number(row['Quantity']) || 1,
-          rate: Number(row['Rate']) || 0,
-          discount: Number(row['Discount']) || 0,
-          errors: errorsList,
-        };
-      });
-
-      setExcelPreviewData(validatedRows);
+          clientName: clientName || 'Imported Client',
+          clientAddress: clientAddress || '',
+          clientContact: contactPerson ? `${contactPerson} | ${contactPhone}` : '',
+          subject: subject || '',
+          validityDate: '',
+          itemName: item.itemName,
+          description: item.description,
+          hsnCode: item.hsnCode,
+          quantity: item.quantity,
+          rate: item.rate,
+          discount: item.discount,
+          errors: []
+        }));
+        setExcelPreviewData(mappedRows);
+      }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -778,7 +1018,19 @@ export default function SmartQuotationSystem() {
 
     const clientContactValue = `${values.contact_person_name} | ${values.contact_person_phone}`;
     const statusValue = 'Accepted';
-    const total_amount = Math.round(taxable_amount);
+    const total_amount = Math.round(taxable_amount * 1.18);
+
+    const serializedTerms = serializeTermsToHtml(termsList);
+    const finalContentBlocks = [];
+    if (serializedTerms) {
+      finalContentBlocks.push({
+        block_type: 'terms_conditions',
+        source: 'manual',
+        title: 'Terms & Conditions',
+        content: serializedTerms,
+        sort_order: 1
+      });
+    }
 
     const payload = {
       client_name: values.client_name,
@@ -789,7 +1041,7 @@ export default function SmartQuotationSystem() {
       status: statusValue,
       revision_label: values.revision_label || '0',
       items: itemsPayload,
-      content_blocks: values.content_blocks,
+      content_blocks: finalContentBlocks,
     };
 
     const tempQuoteNo = isRevisionMode && selectedQuote ? selectedQuote.quotation_no : `QT-TEMP-${tempId.substring(0, 8)}`;
@@ -810,7 +1062,7 @@ export default function SmartQuotationSystem() {
       status: statusValue,
       created_at: new Date().toISOString(),
       items: itemsPayload,
-      content_blocks: values.content_blocks,
+      content_blocks: finalContentBlocks,
       sync_status: 'pending' as const,
     };
 
@@ -844,11 +1096,9 @@ export default function SmartQuotationSystem() {
       status: 'Accepted',
       revision_label: '',
       items: [{ item_name: '', description: '', hsn_sac_code: '', quantity: 1, rate: 0, discount: 0 }],
-      content_blocks: [
-        { block_type: 'scope_of_work', source: 'manual', title: 'Scope of Work', content: '<p>Include technical proposal or delivery scopes here.</p>', sort_order: 0 },
-        { block_type: 'terms_conditions', source: 'manual', title: 'Terms & Conditions', content: '<p>Payment: 100% advance along with Purchase Order.<br>Delivery: Within 2-3 weeks.</p>', sort_order: 1 }
-      ]
+      content_blocks: []
     });
+    setTermsList(DEFAULT_TERMS_CONDITIONS.map(text => ({ text, selected: true })));
     setActiveTab('form');
   };
 
@@ -1061,166 +1311,740 @@ export default function SmartQuotationSystem() {
             </div>
           )}
 
-          {/* 1. DASHBOARD VIEW */}
+          {/* 1. CONDITIONAL DASHBOARD & SIDEBAR VIEWS */}
           {!loading && activeTab === 'dashboard' && (
-            <div className="space-y-6">
+            <div className="space-y-8">
+              
+              {/* TOP HEADER */}
               <div className="flex flex-col md:flex-row justify-between md:items-center space-y-4 md:space-y-0">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 leading-tight">Quotations</h2>
+                  <h2 className="text-2xl font-bold text-slate-900 leading-tight">{activeSidebarItem}</h2>
                   <div className="text-xs text-slate-400 font-semibold tracking-wide flex items-center space-x-1.5 mt-1.5">
-                    <span className="text-slate-500">Dashboard</span>
+                    <span className="text-slate-500">Workspace</span>
                     <ChevronRight className="h-3 w-3 text-slate-300" />
-                    <span className="text-blue-600">Quotations</span>
+                    <span className="text-blue-600 font-semibold">{activeSidebarItem}</span>
                   </div>
                 </div>
-
-                <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold text-slate-700">
+                
+                <div className="flex items-center space-x-3 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold text-slate-700">
                   <Calendar className="h-4 w-4 text-slate-400" />
-                  <span>01 May 2025 - 31 May 2025</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Current Period: FY 2026-27</span>
                 </div>
               </div>
 
-              {/* Statistics Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                  { title: 'Total Quotations', val: stats.total, pct: '+ 12.5%', isPos: true, icon: FileText, color: 'text-blue-600 bg-blue-50 border-blue-100' },
-                  { title: 'Accepted', val: stats.accepted, pct: '+ 8.2%', isPos: true, icon: CheckCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-                  { title: 'Pending / Draft', val: stats.draftPending, pct: '- 4.6%', isPos: false, icon: Calendar, color: 'text-amber-600 bg-amber-50 border-amber-100' },
-                  { title: 'Rejected', val: stats.rejected || 18, pct: '- 2.1%', isPos: false, icon: AlertCircle, color: 'text-rose-600 bg-rose-50 border-rose-100' }
-                ].map((c, i) => {
-                  const Icon = c.icon;
-                  return (
-                    <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm">
-                      <div className="space-y-2">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</span>
-                        <div className="flex items-baseline space-x-2">
-                          <span className="text-2xl font-extrabold text-slate-900">{c.val}</span>
-                          <span className={`text-xs font-bold ${c.isPos ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {c.pct}
-                          </span>
+              {/* A. DASHBOARD ANALYTICS OVERVIEW */}
+              {activeSidebarItem === 'Dashboard' && (
+                <div className="space-y-8">
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                      { title: 'Pipeline Value', val: `${currencySymbol}${(quotations.reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}`, desc: 'Total quotation pipeline', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
+                      { title: 'Conversion Rate', val: `${quotations.length ? Math.round((quotations.filter(q => q.status === 'Accepted').length / quotations.length) * 100) : 0}%`, desc: 'Accepted vs Total quotes', color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
+                      { title: 'Active Drafts', val: quotations.filter(q => q.status === 'Draft' || q.sync_status === 'pending').length, desc: 'Awaiting submission/sync', color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                      { title: 'Total Revisions', val: quotations.reduce((acc, q) => acc + q.revision_index, 0), desc: 'Iterative review cycles', color: 'text-blue-600 bg-blue-50 border-blue-100' }
+                    ].map((c, i) => (
+                      <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm hover:shadow-md transition-all">
+                        <div className="space-y-2">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</span>
+                          <div className="text-2xl font-extrabold text-slate-900">{c.val}</div>
+                          <span className="text-[10px] text-slate-450 block font-medium">{c.desc}</span>
                         </div>
-                        <span className="text-[10px] text-slate-400 block font-medium">vs last month</span>
+                        <div className={`p-3 rounded-xl border flex-shrink-0 ${c.color}`}>
+                          <FileText className="h-5 w-5" />
+                        </div>
                       </div>
-                      <div className={`p-3 rounded-xl border flex-shrink-0 ${c.color}`}>
-                        <Icon className="h-5 w-5" />
+                    ))}
+                  </div>
+
+                  {/* Charts & Quick Actions Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Visual CSS-based Sales Chart */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-bold text-slate-900">Value Distribution by Status</h3>
+                        <span className="text-xs text-slate-400">Live DB Metrics</span>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {[
+                          { status: 'Accepted', color: 'bg-emerald-500', count: quotations.filter(q => q.status === 'Accepted').length },
+                          { status: 'Sent', color: 'bg-blue-500', count: quotations.filter(q => q.status === 'Sent').length },
+                          { status: 'Draft', color: 'bg-amber-500', count: quotations.filter(q => q.status === 'Draft').length },
+                          { status: 'Expired', color: 'bg-rose-500', count: quotations.filter(q => q.status === 'Expired' || q.status === 'Rejected').length },
+                        ].map((item, idx) => {
+                          const percentage = quotations.length ? Math.round((item.count / quotations.length) * 100) : 0;
+                          return (
+                            <div key={idx} className="space-y-1.5">
+                              <div className="flex justify-between text-xs font-semibold">
+                                <span className="text-slate-600 flex items-center space-x-2">
+                                  <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
+                                  <span>{item.status} ({item.count})</span>
+                                </span>
+                                <span className="text-slate-900">{percentage}%</span>
+                              </div>
+                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
 
-              {/* Filters Toolbar */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-sm">
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-                  <input 
-                    type="text"
-                    value={filterClient}
-                    onChange={e => setFilterClient(e.target.value)}
-                    placeholder="Search by Quote No or Client..."
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-full sm:w-60 shadow-inner"
-                  />
-                  
-                  <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Status</span>
-                    <select
-                      value={filterStatus}
-                      onChange={e => setFilterStatus(e.target.value)}
-                      className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer pr-1"
-                    >
-                      <option value="ALL">All Statuses</option>
-                      <option value="Draft">Draft</option>
-                      <option value="Sent">Sent</option>
-                      <option value="Accepted">Accepted</option>
-                      <option value="pending">Sync Pending</option>
-                    </select>
+                    {/* Quick Shortcuts */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-bold text-slate-900 mb-2">Quick Actions</h3>
+                        <p className="text-xs text-slate-400 mb-6">Common operations for generating and managing commercial offers.</p>
+                        
+                        <div className="space-y-3">
+                          <button onClick={startNewQuote} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center space-x-2">
+                            <Plus className="h-4 w-4" />
+                            <span>Create Custom Quotation</span>
+                          </button>
+                          
+                          <button onClick={() => fileInputRef.current?.click()} className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2">
+                            <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
+                            <span>Import spreadsheet template</span>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-6 border-t border-slate-100 pt-4 flex items-center justify-between text-xs text-slate-400">
+                        <span>Local DB Sync Mode</span>
+                        <span className="text-emerald-500 font-bold flex items-center space-x-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                          <span>IndexedDB active</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <input
-                    type="number"
-                    value={filterMinVal}
-                    onChange={e => setFilterMinVal(e.target.value)}
-                    placeholder="Min Value"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-28 shadow-inner"
-                  />
+                  {/* Audit Logs / Activity logs */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                      <h3 className="font-bold text-slate-900">Recent Server Audit Trail</h3>
+                      <button onClick={fetchAuditLogs} className="text-xs text-blue-600 font-semibold hover:underline flex items-center space-x-1">
+                        <RefreshCw className="h-3 w-3" />
+                        <span>Refresh Logs</span>
+                      </button>
+                    </div>
 
-                  <input
-                    type="number"
-                    value={filterMaxVal}
-                    onChange={e => setFilterMaxVal(e.target.value)}
-                    placeholder="Max Value"
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-28 shadow-inner"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-3 w-full lg:w-auto justify-end">
-                  <button 
-                    onClick={() => { setFilterClient(''); setFilterStatus('ALL'); setFilterMinVal(''); setFilterMaxVal(''); }}
-                    className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-colors"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
-                    <span>Filters</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Data Table */}
-              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      {table.getHeaderGroups().map(headerGroup => (
-                        <tr key={headerGroup.id} className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
-                          {headerGroup.headers.map(header => (
-                            <th key={header.id} className="px-6 py-4">
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </th>
-                          ))}
-                        </tr>
-                      ))}
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {table.getRowModel().rows.length === 0 ? (
-                        <tr>
-                          <td colSpan={columns.length} className="px-6 py-12 text-center text-slate-400">
-                            No matching quotations found.
-                          </td>
-                        </tr>
+                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                      {auditLogs.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-6">No server activities logged, or server currently unreachable.</p>
                       ) : (
-                        table.getRowModel().rows.map(row => (
-                          <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
-                            {row.getVisibleCells().map(cell => (
-                              <td key={cell.id} className="px-6 py-4">
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </td>
-                            ))}
-                          </tr>
+                        auditLogs.slice(0, 10).map((log, idx) => (
+                          <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-150 text-xs">
+                            <div className="flex items-center space-x-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                log.action.includes('CREATE') ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                log.action.includes('REVISE') ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                'bg-slate-100 text-slate-600'
+                              }`}>
+                                {log.action}
+                              </span>
+                              <span className="font-semibold text-slate-800">Quote {log.quotation_no || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center space-x-4 text-slate-400">
+                              <span>By: {log.username} ({log.role})</span>
+                              <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
                         ))
                       )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination */}
-                <div className="border-t border-slate-100 px-6 py-4 flex items-center justify-between">
-                  <span className="text-xs text-slate-500 font-medium">
-                    Showing 1 to {filteredQuotes.length} of {filteredQuotes.length} results
-                  </span>
-                  <div className="flex items-center space-x-1.5">
-                    <button className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 disabled:opacity-50" disabled>
-                      Prev
-                    </button>
-                    <button className="px-3.5 py-2 bg-blue-600 border border-blue-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/10">
-                      1
-                    </button>
-                    <button className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 disabled:opacity-50" disabled>
-                      Next
-                    </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* B. QUOTATIONS VIEW (ORIGINAL DATA TABLE) */}
+              {activeSidebarItem === 'Quotations' && (
+                <div className="space-y-6">
+                  {/* Statistics Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                      { title: 'Total Quotations', val: stats.total, pct: '+ 12.5%', isPos: true, icon: FileText, color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                      { title: 'Accepted', val: stats.accepted, pct: '+ 8.2%', isPos: true, icon: CheckCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
+                      { title: 'Pending / Draft', val: stats.draftPending, pct: '- 4.6%', isPos: false, icon: Calendar, color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                      { title: 'Rejected', val: stats.rejected || 0, pct: '0%', isPos: true, icon: AlertCircle, color: 'text-rose-600 bg-rose-50 border-rose-100' }
+                    ].map((c, i) => {
+                      const Icon = c.icon;
+                      return (
+                        <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+                          <div className="space-y-2">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</span>
+                            <div className="flex items-baseline space-x-2">
+                              <span className="text-2xl font-extrabold text-slate-900">{c.val}</span>
+                              <span className={`text-xs font-bold ${c.isPos ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {c.pct}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-450 block font-medium">vs last month</span>
+                          </div>
+                          <div className={`p-3 rounded-xl border flex-shrink-0 ${c.color}`}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Filters Toolbar */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                      <input 
+                        type="text"
+                        value={filterClient}
+                        onChange={e => setFilterClient(e.target.value)}
+                        placeholder="Search by Quote No or Client..."
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-full sm:w-60 shadow-inner"
+                      />
+                      
+                      <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Status</span>
+                        <select
+                          value={filterStatus}
+                          onChange={e => setFilterStatus(e.target.value)}
+                          className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer pr-1"
+                        >
+                          <option value="ALL">All Statuses</option>
+                          <option value="Draft">Draft</option>
+                          <option value="Sent">Sent</option>
+                          <option value="Accepted">Accepted</option>
+                          <option value="pending">Sync Pending</option>
+                        </select>
+                      </div>
+
+                      <input
+                        type="number"
+                        value={filterMinVal}
+                        onChange={e => setFilterMinVal(e.target.value)}
+                        placeholder="Min Value"
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-28 shadow-inner"
+                      />
+
+                      <input
+                        type="number"
+                        value={filterMaxVal}
+                        onChange={e => setFilterMaxVal(e.target.value)}
+                        placeholder="Max Value"
+                        className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-28 shadow-inner"
+                      />
+                    </div>
+
+                    <div className="flex items-center space-x-3 w-full lg:w-auto justify-end">
+                      <button 
+                        onClick={() => { setFilterClient(''); setFilterStatus('ALL'); setFilterMinVal(''); setFilterMaxVal(''); }}
+                        className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-colors"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
+                        <span>Reset Filters</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Data Table */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          {table.getHeaderGroups().map(headerGroup => (
+                            <tr key={headerGroup.id} className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
+                              {headerGroup.headers.map(header => (
+                                <th key={header.id} className="px-6 py-4">
+                                  {header.isPlaceholder
+                                    ? null
+                                    : flexRender(header.column.columnDef.header, header.getContext())}
+                                </th>
+                              ))}
+                            </tr>
+                          ))}
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-sm">
+                          {table.getRowModel().rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={columns.length} className="px-6 py-12 text-center text-slate-400">
+                                No matching quotations found.
+                              </td>
+                            </tr>
+                          ) : (
+                            table.getRowModel().rows.map(row => (
+                              <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                                {row.getVisibleCells().map(cell => (
+                                  <td key={cell.id} className="px-6 py-4">
+                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="border-t border-slate-100 px-6 py-4 flex items-center justify-between">
+                      <span className="text-xs text-slate-500 font-medium">
+                        Showing 1 to {filteredQuotes.length} of {filteredQuotes.length} results
+                      </span>
+                      <div className="flex items-center space-x-1.5">
+                        <button className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 disabled:opacity-50" disabled>
+                          Prev
+                        </button>
+                        <button className="px-3.5 py-2 bg-blue-600 border border-blue-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-600/10">
+                          1
+                        </button>
+                        <button className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 disabled:opacity-50" disabled>
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* C. CLIENTS DIRECTORY VIEW */}
+              {activeSidebarItem === 'Clients' && (
+                <div className="space-y-6">
+                  {/* Dynamic stats */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Clients Ledger</h3>
+                      <p className="text-xs text-slate-400 mt-1">Unique client entities compiled from saved proposals.</p>
+                    </div>
+                    <span className="text-xs bg-blue-50 text-blue-600 font-bold px-3 py-1.5 rounded-xl border border-blue-100">
+                      Total: {uniqueClients.length} Active Clients
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {uniqueClients.map((client, idx) => {
+                      const clientQuotes = quotations.filter(q => q.client_name === client.client_name);
+                      const totalValue = clientQuotes.reduce((acc, q) => acc + Number(q.total_amount), 0);
+                      
+                      return (
+                        <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-slate-350 transition-all flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-center space-x-3 mb-3">
+                              <div className="h-10 w-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center font-bold text-sm border border-indigo-100">
+                                {client.client_name.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-slate-900 text-sm leading-snug">{client.client_name}</h4>
+                                <span className="text-[10px] text-slate-400 font-medium">Verified Client</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                              <p className="flex items-center space-x-2">
+                                <MapPin className="h-3.5 w-3.5 text-slate-450" />
+                                <span className="truncate">{client.client_address || 'No address specified'}</span>
+                              </p>
+                              <p className="flex items-center space-x-2">
+                                <User className="h-3.5 w-3.5 text-slate-450" />
+                                <span>{client.contact_person_name || 'N/A'}</span>
+                              </p>
+                              <p className="flex items-center space-x-2">
+                                <Phone className="h-3.5 w-3.5 text-slate-450" />
+                                <span>{client.contact_person_phone || 'N/A'}</span>
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-slate-100 pt-4 mt-4 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Quotes</span>
+                              <span className="font-bold text-slate-800">{clientQuotes.length} Offers</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Billing pipeline</span>
+                              <span className="font-extrabold text-blue-600">{currencySymbol}{totalValue.toLocaleString('en-IN')}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {uniqueClients.length === 0 && (
+                      <div className="col-span-full py-12 text-center text-slate-400">
+                        No clients database available yet. Create a quote to populate the list.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* D. PRODUCTS / ITEMS DIRECTORY VIEW */}
+              {activeSidebarItem === 'Products / Items' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Products List */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 space-y-6">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Products Catalog</h3>
+                      <p className="text-xs text-slate-400 mt-1">Predefined line items and pricing matrix for standard quotes.</p>
+                    </div>
+
+                    <div className="overflow-x-auto border border-slate-150 rounded-xl">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-150">
+                            <th className="p-3">Item Details</th>
+                            <th className="p-3">HSN Code</th>
+                            <th className="p-3 text-right">Standard Rate</th>
+                            <th className="p-3 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {productsList.map((prod) => (
+                            <tr key={prod.id} className="hover:bg-slate-50/50">
+                              <td className="p-3">
+                                <p className="font-semibold text-slate-850">{prod.item_name}</p>
+                                {prod.description && <p className="text-[10px] text-slate-400 mt-0.5">{prod.description}</p>}
+                              </td>
+                              <td className="p-3 font-mono text-slate-500">{prod.hsn_sac_code || 'N/A'}</td>
+                              <td className="p-3 text-right font-bold text-slate-700">{currencySymbol}{Number(prod.rate).toFixed(2)}</td>
+                              <td className="p-3 text-center">
+                                <button 
+                                  onClick={async () => await db.products.delete(prod.id)}
+                                  className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+
+                          {productsList.length === 0 && (
+                            <tr>
+                              <td colSpan={4} className="p-8 text-center text-slate-400">No items in database. Add standard items using form on the right.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Add Product Form */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 h-fit">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Add Predefined Item</h3>
+                      <p className="text-xs text-slate-400 mt-1">Saves standard rates to speed up manual quoting.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Product/Service Name *</label>
+                        <input
+                          type="text"
+                          value={newProdName}
+                          onChange={e => setNewProdName(e.target.value)}
+                          placeholder="e.g. IT support tier 2"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Standard Rate ({currencySymbol}) *</label>
+                        <input
+                          type="number"
+                          value={newProdRate}
+                          onChange={e => setNewProdRate(e.target.value)}
+                          placeholder="e.g. 1500"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">HSN / SAC Code</label>
+                        <input
+                          type="text"
+                          value={newProdHsn}
+                          onChange={e => setNewProdHsn(e.target.value)}
+                          placeholder="e.g. 998313"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Description</label>
+                        <textarea
+                          rows={2}
+                          value={newProdDesc}
+                          onChange={e => setNewProdDesc(e.target.value)}
+                          placeholder="Provide details about standard services or specs..."
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (!newProdName || !newProdRate) {
+                            alert('Please fill out product name and rate.');
+                            return;
+                          }
+                          await db.products.add({
+                            id: crypto.randomUUID(),
+                            item_name: newProdName,
+                            rate: Number(newProdRate),
+                            hsn_sac_code: newProdHsn || undefined,
+                            description: newProdDesc || undefined
+                          });
+                          setNewProdName('');
+                          setNewProdRate('');
+                          setNewProdHsn('');
+                          setNewProdDesc('');
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm"
+                      >
+                        Add Product
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* E. REPORTS VIEW */}
+              {activeSidebarItem === 'Reports' && (
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Pipeline Value</span>
+                      <h2 className="text-3xl font-black text-slate-900 mt-2">{currencySymbol}{(quotations.reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}</h2>
+                      <p className="text-[10px] text-slate-400 mt-1">Entire historical billing index</p>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Closed / Won Deals</span>
+                      <h2 className="text-3xl font-black text-emerald-600 mt-2">{currencySymbol}{(quotations.filter(q => q.status === 'Accepted').reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}</h2>
+                      <p className="text-[10px] text-slate-400 mt-1">Accepted sales revenue</p>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Awaiting Client Response</span>
+                      <h2 className="text-3xl font-black text-blue-600 mt-2">{currencySymbol}{(quotations.filter(q => q.status === 'Sent').reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}</h2>
+                      <p className="text-[10px] text-slate-400 mt-1">Pending approval offers</p>
+                    </div>
+                  </div>
+
+                  {/* Month-wise Value bars */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-slate-900">Quotation value projection</h3>
+                      <span className="text-xs text-slate-400">Current calendar year</span>
+                    </div>
+
+                    <div className="flex items-end justify-between h-48 pt-6 border-b border-slate-100">
+                      {[
+                        { month: 'Jan', val: 120000 },
+                        { month: 'Feb', val: 240000 },
+                        { month: 'Mar', val: 310000 },
+                        { month: 'Apr', val: 180000 },
+                        { month: 'May', val: 290000 },
+                        { month: 'Jun', val: 420000 },
+                      ].map((item, i) => {
+                        const heightPct = Math.round((item.val / 450000) * 100);
+                        return (
+                          <div key={i} className="flex flex-col items-center space-y-2 w-12 group cursor-pointer">
+                            <span className="opacity-0 group-hover:opacity-100 text-[10px] bg-slate-800 text-white rounded px-1.5 py-0.5 transition-all">
+                              {currencySymbol}{item.val.toLocaleString('en-IN')}
+                            </span>
+                            <div className="w-8 bg-blue-500 hover:bg-blue-600 rounded-t-lg transition-all duration-300" style={{ height: `${heightPct * 1.2}px` }} />
+                            <span className="text-xs text-slate-450 font-bold">{item.month}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* F. TEMPLATES VIEW */}
+              {activeSidebarItem === 'Templates' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Saved Templates */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 space-y-6">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Commercial Terms Libraries</h3>
+                      <p className="text-xs text-slate-400 mt-1">Predefined legal terms and SLA profiles saved in local workspace database.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {templatesList.map((tpl) => (
+                        <div key={tpl.id} className="p-4 bg-slate-50 border border-slate-250 rounded-xl space-y-2 relative shadow-sm">
+                          <h4 className="font-bold text-slate-800 text-xs">{tpl.title}</h4>
+                          <p className="text-[11px] text-slate-500 leading-normal">{tpl.content}</p>
+                          
+                          <button
+                            onClick={async () => await db.templates.delete(tpl.id)}
+                            className="absolute top-4 right-4 text-slate-400 hover:text-rose-600 transition-colors p-1"
+                            title="Delete Template"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {templatesList.length === 0 && (
+                        <div className="text-center py-8 text-slate-400 text-xs">No contract templates defined yet. Add standard layouts below.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Add Template Card */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 h-fit">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Define Legal Template</h3>
+                      <p className="text-xs text-slate-400 mt-1">Specify payment constraints or warranty timelines.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Template Title *</label>
+                        <input
+                          type="text"
+                          value={newTempTitle}
+                          onChange={e => setNewTempTitle(e.target.value)}
+                          placeholder="e.g. 50-50 Payment SLA"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Terms Content *</label>
+                        <textarea
+                          rows={4}
+                          value={newTempContent}
+                          onChange={e => setNewTempContent(e.target.value)}
+                          placeholder="e.g. 50% advance invoice, balance post delivery..."
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (!newTempTitle || !newTempContent) {
+                            alert('Please fill out template title and content.');
+                            return;
+                          }
+                          await db.templates.add({
+                            id: crypto.randomUUID(),
+                            title: newTempTitle,
+                            content: newTempContent
+                          });
+                          setNewTempTitle('');
+                          setNewTempContent('');
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors shadow-sm"
+                      >
+                        Save Contract Template
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* G. SETTINGS VIEW */}
+              {activeSidebarItem === 'Settings' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Preferences Card */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Quotation Preferences</h3>
+                      <p className="text-xs text-slate-400 mt-1">Configure default constraints, currencies and taxation ratios.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Tax (GST) Rate (%)</label>
+                          <input
+                            type="number"
+                            value={gstRate}
+                            onChange={e => {
+                              const val = Number(e.target.value);
+                              setGstRate(val);
+                              localStorage.setItem('setting-gst', String(val));
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Currency Symbol</label>
+                          <input
+                            type="text"
+                            value={currencySymbol}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setCurrencySymbol(val);
+                              localStorage.setItem('setting-currency', val);
+                            }}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-450 uppercase mb-1.5">Default Validity Days</label>
+                        <input
+                          type="number"
+                          value={defaultValidityDays}
+                          onChange={e => {
+                            const val = Number(e.target.value);
+                            setDefaultValidityDays(val);
+                            localStorage.setItem('setting-validity', String(val));
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:border-blue-400 focus:bg-white outline-none text-slate-800"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Database syncing Tools */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 h-fit">
+                    <div>
+                      <h3 className="font-bold text-slate-900">Database Tools</h3>
+                      <p className="text-xs text-slate-400 mt-1">Actions to purge, repair, or manually sync local caches.</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div>
+                          <span className="font-bold text-xs text-slate-800 block">Outbox Queue Status</span>
+                          <span className="text-[10px] text-slate-400 mt-0.5">Unsynced offline quotations payload.</span>
+                        </div>
+                        <button
+                          onClick={handleManualSync}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all shadow-sm"
+                        >
+                          Manual Sync
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-center p-4 bg-red-50/50 border border-red-200 rounded-xl">
+                        <div>
+                          <span className="font-bold text-xs text-red-800 block">Purge Local Cache</span>
+                          <span className="text-[10px] text-red-400 mt-0.5">Clear all IndexedDB quotes (does not affect server).</span>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (confirm('Are you sure you want to clear your local cache? This will delete all offline data.')) {
+                              await db.quotations.clear();
+                              await db.outbox.clear();
+                              alert('Local cache successfully cleared.');
+                              window.location.reload();
+                            }
+                          }}
+                          className="bg-red-650 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-all shadow-sm"
+                        >
+                          Purge DB
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -1401,14 +2225,17 @@ export default function SmartQuotationSystem() {
                             <td className="p-3 space-y-2">
                               <input
                                 type="text"
-                                {...register(`items.${idx}.item_name`)}
-                                onChange={(e) => handleItemDescriptionChange(idx, e.target.value)}
+                                {...register(`items.${idx}.item_name`, {
+                                  onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
+                                })}
                                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:border-blue-400 outline-none text-slate-800 font-semibold shadow-inner"
                                 placeholder="Item name"
                               />
                               <textarea
                                 rows={1}
-                                {...register(`items.${idx}.description`)}
+                                {...register(`items.${idx}.description`, {
+                                  onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
+                                })}
                                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1 focus:border-blue-400 outline-none text-slate-400 text-[10px] shadow-inner"
                                 placeholder="Description (optional)"
                               />
@@ -1471,36 +2298,59 @@ export default function SmartQuotationSystem() {
                 </div>
               </div>
 
-              {/* Step 3: Document Content */}
+              {/* Step 3: Terms & Conditions Checklist */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-sm">
-                <div className="flex items-center space-x-3.5 border-b border-slate-100 pb-4">
-                  <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-100">
-                    3
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center space-x-3.5">
+                    <div className="h-7 w-7 rounded-full bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-100">
+                      3
+                    </div>
+                    <h3 className="font-bold text-slate-900">Terms & Conditions</h3>
                   </div>
-                  <h3 className="font-bold text-slate-900">Document Content</h3>
+                  <button
+                    type="button"
+                    onClick={addTerm}
+                    className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 px-3.5 py-2 rounded-xl flex items-center space-x-1 font-semibold transition-colors"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add T&C</span>
+                  </button>
                 </div>
 
-                <div className="space-y-4">
-                  {blockFields.map((field, idx) => (
-                    <div key={field.id} className="space-y-2">
-                      <span className="block text-xs font-bold text-slate-700 capitalize">
-                        {watchedBlocks[idx]?.title}
-                      </span>
-                      <p className="text-[10px] text-slate-400 pb-1">
-                        {watchedBlocks[idx]?.block_type === 'scope_of_work' ? 'Describe the scope of work, deliverables and responsibilities.' : 
-                         watchedBlocks[idx]?.block_type === 'terms_conditions' ? 'Add terms and conditions for this quotation.' : 
-                         'Add technical specifications details if any.'}
-                      </p>
-                      
-                      <Controller
-                        name={`content_blocks.${idx}.content`}
-                        control={control}
-                        render={({ field: { value, onChange } }) => (
-                          <TiptapEditor value={value} onChange={onChange} />
-                        )}
+                <div className="space-y-3">
+                  {termsList.map((clause, idx) => (
+                    <div key={idx} className="flex items-start space-x-3 p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-150 rounded-xl transition-all shadow-sm">
+                      <input
+                        type="checkbox"
+                        checked={clause.selected}
+                        onChange={() => toggleTerm(idx)}
+                        className="mt-1 h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                       />
+                      <div className="flex-1">
+                        <textarea
+                          rows={2}
+                          value={clause.text}
+                          onChange={(e) => updateTermText(idx, e.target.value)}
+                          className="w-full bg-transparent border-none outline-none focus:ring-0 text-slate-700 text-xs resize-none py-0.5 leading-normal"
+                          placeholder="Enter terms and conditions clause..."
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => deleteTerm(idx)}
+                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                        title="Delete Clause"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   ))}
+                  
+                  {termsList.length === 0 && (
+                    <div className="text-center py-6 text-slate-400 text-xs">
+                      No Terms & Conditions clauses. Click "Add T&C" to create one.
+                    </div>
+                  )}
                 </div>
               </div>
 

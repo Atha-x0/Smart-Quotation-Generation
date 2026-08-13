@@ -29,7 +29,8 @@ export class QuotationService implements OnModuleInit {
       taxable_amount = taxable_amount.add(itemTaxable);
     }
     
-    total_amount = taxable_amount.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
+    const totalWithTax = taxable_amount.mul(1.18);
+    total_amount = totalWithTax.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
     return { taxable_amount, total_amount };
   }
 
@@ -46,6 +47,7 @@ export class QuotationService implements OnModuleInit {
       description?: string;
       hsn_sac_code?: string;
       quantity: number;
+      unit?: string;
       rate: number;
       discount?: number;
     }[];
@@ -92,6 +94,7 @@ export class QuotationService implements OnModuleInit {
               description: item.description,
               hsn_sac_code: item.hsn_sac_code,
               quantity: qty,
+              unit: item.unit,
               rate: rate,
               discount: disc,
               taxable_amount: qty.mul(rate).sub(disc),
@@ -190,6 +193,7 @@ export class QuotationService implements OnModuleInit {
         description?: string;
         hsn_sac_code?: string;
         quantity: number;
+        unit?: string;
         rate: number;
         discount?: number;
       }[];
@@ -265,6 +269,7 @@ export class QuotationService implements OnModuleInit {
               description: item.description,
               hsn_sac_code: item.hsn_sac_code,
               quantity: qty,
+              unit: item.unit,
               rate: rate,
               discount: disc,
               taxable_amount: qty.mul(rate).sub(disc),

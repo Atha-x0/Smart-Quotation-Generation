@@ -48,19 +48,38 @@ export interface OutboxEntry {
   timestamp: number;
 }
 
+export interface LocalProduct {
+  id: string;
+  item_name: string;
+  description?: string;
+  hsn_sac_code?: string;
+  rate: number;
+}
+
+export interface LocalTemplate {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export class SmartQuotationDatabase extends Dexie {
   quotations!: Table<LocalQuotation>;
   outbox!: Table<OutboxEntry>;
   hsnCodes!: Table<HsnCode>;
+  products!: Table<LocalProduct>;
+  templates!: Table<LocalTemplate>;
 
   constructor() {
     super('SmartQuotationDB');
-    this.version(2).stores({
+    this.version(3).stores({
       quotations: 'id, quotation_no, sync_status, created_at',
       outbox: '++id, quotation_id, timestamp',
-      hsnCodes: 'id, code, description'
+      hsnCodes: 'id, code, description',
+      products: 'id, item_name, hsn_sac_code',
+      templates: 'id, title'
     });
   }
 }
 
 export const db = new SmartQuotationDatabase();
+

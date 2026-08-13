@@ -1,8 +1,9 @@
 import { db } from './db';
 
-const API_BASE = typeof window !== 'undefined'
-  ? `http://${window.location.hostname}:5000/api`
-  : 'http://127.0.0.1:5000/api';
+const host = typeof window !== 'undefined'
+  ? (window.location.hostname === 'localhost' || window.location.hostname === '[::1]' ? '127.0.0.1' : window.location.hostname)
+  : '127.0.0.1';
+const API_BASE = `http://${host}:5000/api`;
 
 function getAuthHeaders(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -120,7 +121,7 @@ export async function fetchLatestFromServer() {
       }
     }
   } catch (err) {
-    console.error('Failed to fetch from server:', err);
+    console.warn('Backend server is offline or unreachable. Running in offline/cached mode.');
   }
 }
 
@@ -142,6 +143,6 @@ export async function syncHsnCodes() {
       }
     }
   } catch (err) {
-    console.error('Failed to sync HSN codes:', err);
+    console.warn('Backend server is offline or unreachable. HSN codes sync skipped.');
   }
 }

@@ -365,13 +365,17 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     currentY = rowY + 8;
 
     // Check space for totals box
-    if (currentY > 640) {
+    if (currentY > 675) {
       doc.addPage();
       currentY = 40;
     }
 
+    const totalTaxableVal = Number(quote.taxable_amount || 0);
+    const cgstVal = totalTaxableVal * 0.09;
+    const sgstVal = totalTaxableVal * 0.09;
+    const grandTotalVal = Math.round(totalTaxableVal + cgstVal + sgstVal);
+
     // Amount in Words
-    const grandTotalVal = Number(quote.total_amount || 0);
     const amountInWordsText = numberToWords(grandTotalVal);
 
     doc.fillColor('#1A1A1A').font('Roboto-Bold').fontSize(8).text('Amount in Words:', leftMargin, currentY);
@@ -381,10 +385,6 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     const totalBoxWidth = 190;
     const totalBoxX = 595.28 - rightMargin - totalBoxWidth;
     let tY = currentY - 8; // align with amount in words block top
-
-    const totalTaxableVal = Number(quote.taxable_amount || 0);
-    const cgstVal = totalTaxableVal * 0.09;
-    const sgstVal = totalTaxableVal * 0.09;
 
     const drawTotalRow = (label: string, valStr: string, isBold = false) => {
       doc.rect(totalBoxX, tY, totalBoxWidth, 15).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
@@ -463,7 +463,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     }
 
     // Add Thank you footer at the bottom of the last page
-    if (currentY > 740) {
+    if (currentY > 765) {
       doc.addPage();
       currentY = 40;
     }
