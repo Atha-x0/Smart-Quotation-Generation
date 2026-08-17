@@ -1,8 +1,8 @@
 import { db } from './db';
 
 const host = typeof window !== 'undefined'
-  ? (window.location.hostname === 'localhost' || window.location.hostname === '[::1]' ? '127.0.0.1' : window.location.hostname)
-  : '127.0.0.1';
+  ? window.location.hostname
+  : 'localhost';
 const API_BASE = `http://${host}:5000/api`;
 
 function getAuthHeaders(): Record<string, string> {

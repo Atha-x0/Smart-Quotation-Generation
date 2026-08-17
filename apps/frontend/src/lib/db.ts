@@ -6,6 +6,7 @@ export interface LocalQuotationItem {
   description?: string;
   hsn_sac_code?: string;
   quantity: number;
+  unit?: string;
   rate: number;
   discount?: number;
   taxable_amount?: number;

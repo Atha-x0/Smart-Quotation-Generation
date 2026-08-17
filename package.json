@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "adiabatic-cooler-quotation/backend",
+    "adiabatic-cooler-quotation/frontend"
   ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=apps/backend",
     "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "dev:adiabatic-backend": "npm run dev --workspace=adiabatic-cooler-quotation-backend",
+    "dev:adiabatic-frontend": "npm run dev --workspace=adiabatic-cooler-quotation-frontend",
     "build:backend": "npm run build --workspace=apps/backend",
     "build:frontend": "npm run build --workspace=apps/frontend"
   },

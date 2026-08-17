@@ -38,7 +38,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private pool: Pool;
 
   constructor() {
-    const pool = new Pool({ connectionString: directUrl, ssl: false });
+    const isNeon = directUrl.includes('neon.tech') || directUrl.includes('sslmode=require');
+    const pool = new Pool({
+      connectionString: directUrl,
+      ssl: isNeon ? { rejectUnauthorized: false } : false,
+    });
     const adapter = new PrismaPg(pool);
     super({ adapter });
     this.pool = pool;

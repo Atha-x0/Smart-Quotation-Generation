@@ -210,13 +210,10 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       
       const contactParts = (quote.client_contact || '').split(' | ');
       const contactName = contactParts[0] || '';
-      const contactPhone = contactParts[1] || '';
 
       drawFieldWithUnderline('Client Name', quote.client_name || '', leftMargin, clientY, 110, 405);
       clientY += 14;
       drawFieldWithUnderline('Contact Person', contactName, leftMargin, clientY, 110, 405);
-      clientY += 14;
-      drawFieldWithUnderline('Contact Number', contactPhone, leftMargin, clientY, 110, 405);
       clientY += 14;
       drawFieldWithUnderline('Client Address', quote.client_address || '', leftMargin, clientY, 110, 405);
       clientY += 14;
@@ -233,27 +230,27 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
 
     // Draw main Table Header box
     doc.rect(leftMargin, tableTop, contentWidth, headerHeight).fill('#F2F2F2');
-    doc.rect(leftMargin, tableTop, contentWidth, headerHeight).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
-
-    const colX = {
+    doc.rect(leftMargin, tableTop, contentWidth, headerHeight).strokeColor('#CCCCCC').lineWidth(0.5).stroke();    const colX = {
       sl: leftMargin, // 40
-      name: leftMargin + 30, // 70
-      desc: leftMargin + 120, // 160
-      hsn: leftMargin + 240, // 280
-      qty: leftMargin + 300, // 340
-      rate: leftMargin + 340, // 380
-      discount: leftMargin + 400, // 440
+      name: leftMargin + 25, // 65
+      desc: leftMargin + 115, // 155
+      hsn: leftMargin + 225, // 265
+      qty: leftMargin + 285, // 325
+      unit: leftMargin + 320, // 360
+      rate: leftMargin + 355, // 395
+      discount: leftMargin + 405, // 445
       amount: leftMargin + 450 // 490
     };
 
     const colWidths = {
-      sl: 30,
+      sl: 25,
       name: 90,
-      desc: 120,
+      desc: 110,
       hsn: 60,
-      qty: 40,
-      rate: 60,
-      discount: 50,
+      qty: 35,
+      unit: 35,
+      rate: 50,
+      discount: 45,
       amount: 65.28
     };
 
@@ -263,6 +260,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     doc.text('Description', colX.desc + 3, tableTop + 5, { width: colWidths.desc - 3 });
     doc.text('HSN/SAC Code', colX.hsn, tableTop + 5, { width: colWidths.hsn, align: 'center' });
     doc.text('QTY', colX.qty, tableTop + 5, { width: colWidths.qty, align: 'center' });
+    doc.text('Unit', colX.unit, tableTop + 5, { width: colWidths.unit, align: 'center' });
     doc.text('Rate (₹)', colX.rate, tableTop + 5, { width: colWidths.rate, align: 'right' });
     doc.text('Discount', colX.discount, tableTop + 5, { width: colWidths.discount, align: 'right' });
     doc.text('Total Amount (₹)', colX.amount, tableTop + 5, { width: colWidths.amount - 2, align: 'right' });
@@ -284,6 +282,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       colX.desc,
       colX.hsn,
       colX.qty,
+      colX.unit,
       colX.rate,
       colX.discount,
       colX.amount
@@ -324,6 +323,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
         doc.text('Description', colX.desc + 3, rowY + 5, { width: colWidths.desc - 3 });
         doc.text('HSN/SAC Code', colX.hsn, rowY + 5, { width: colWidths.hsn, align: 'center' });
         doc.text('QTY', colX.qty, rowY + 5, { width: colWidths.qty, align: 'center' });
+        doc.text('Unit', colX.unit, rowY + 5, { width: colWidths.unit, align: 'center' });
         doc.text('Rate (₹)', colX.rate, rowY + 5, { width: colWidths.rate, align: 'right' });
         doc.text('Discount', colX.discount, rowY + 5, { width: colWidths.discount, align: 'right' });
         doc.text('Total Amount (₹)', colX.amount, rowY + 5, { width: colWidths.amount - 2, align: 'right' });
@@ -349,6 +349,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
           .text(item.description || '', colX.desc + 3, rowY + 5, { width: colWidths.desc - 5 })
           .text(item.hsn_sac_code || '-', colX.hsn, rowY + 5, { width: colWidths.hsn, align: 'center' })
           .text(qty.toString(), colX.qty, rowY + 5, { width: colWidths.qty, align: 'center' })
+          .text(item.unit || '-', colX.unit, rowY + 5, { width: colWidths.unit, align: 'center' })
           .text(formatCurrency(rate), colX.rate, rowY + 5, { width: colWidths.rate, align: 'right' })
           .text(discount > 0 ? formatCurrency(discount) : '-', colX.discount, rowY + 5, { width: colWidths.discount, align: 'right' })
           .text(formatCurrency(itemTotal), colX.amount, rowY + 5, { width: colWidths.amount - 2, align: 'right' });
@@ -362,7 +363,7 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       doc.moveTo(x, localTableTop).lineTo(x, rowY).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
     });
 
-    currentY = rowY + 8;
+    currentY = rowY + 8; rowY + 8;
 
     // Check space for totals box
     if (currentY > 675) {
@@ -448,14 +449,37 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     // Filter content blocks by type
     const scopeBlock = contentBlocks.find((cb: any) => cb.block_type === 'scope_of_work');
     const termsBlock = contentBlocks.find((cb: any) => cb.block_type === 'terms_conditions');
+    const paymentBlock = contentBlocks.find((cb: any) => cb.block_type === 'payment_terms');
     const specBlock = contentBlocks.find((cb: any) => cb.block_type === 'technical_spec');
 
     if (scopeBlock) {
       renderContentBlock('Scope of Work:', cleanHtmlText(scopeBlock.content));
     }
 
+    // Always render Payment Terms section separately first
+    let paymentTermsText = 'Payment terms shall be as mentioned in the commercial summary of this quotation.';
+    if (paymentBlock) {
+      const rawPaymentText = cleanHtmlText(paymentBlock.content);
+      const paymentLines = rawPaymentText.split('\n')
+        .map(l => l.replace(/^[•\-\*\s]+/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+        .filter(l => l.length > 0);
+      if (paymentLines.length > 0) {
+        paymentTermsText = paymentLines.map((line, idx) => paymentLines.length > 1 ? `${idx + 1}. ${line}` : line).join('\n\n');
+      }
+    }
+    renderContentBlock('Payment Terms:', paymentTermsText);
+
     if (termsBlock) {
-      renderContentBlock('Terms & Conditions:', cleanHtmlText(termsBlock.content));
+      // Clean terms block content, filter out duplicate payment terms references, and convert bullets to sequential numbers
+      const rawText = cleanHtmlText(termsBlock.content);
+      const lines = rawText.split('\n')
+        .map(l => l.replace(/^[•\-\*\s]+/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+        .filter(l => l.length > 0)
+        // Filter out any lines discussing payment terms to avoid duplication
+        .filter(l => !l.toLowerCase().includes('payment terms') && !l.toLowerCase().includes('payment shall be'));
+      
+      const numberedTermsText = lines.map((line, idx) => `${idx + 1}. ${line}`).join('\n\n');
+      renderContentBlock('Terms & Conditions:', numberedTermsText);
     }
 
     if (specBlock) {

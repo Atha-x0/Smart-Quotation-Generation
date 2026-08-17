@@ -24,11 +24,13 @@ import {
   FileText, Plus, Edit, Eye, History, Trash2, Calendar, User, 
   MapPin, Phone, Tag, DollarSign, ChevronRight, X, ArrowLeft, RefreshCw, Save, CheckCircle, Wifi, WifiOff, Bold, Italic, List, ListOrdered, FileSpreadsheet, Download, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, Menu, Bell, HelpCircle, FileCheck2, AlertCircle
 } from 'lucide-react';
+import AdiabaticCooler from './AdiabaticCooler';
 
 const host = typeof window !== 'undefined'
-  ? (window.location.hostname === 'localhost' || window.location.hostname === '[::1]' ? '127.0.0.1' : window.location.hostname)
-  : '127.0.0.1';
+  ? window.location.hostname
+  : 'localhost';
 const API_BASE = `http://${host}:5000/api`;
+const ADIABATIC_API_BASE = `${API_BASE}/adiabatic`;
 
 const DEFAULT_TERMS_CONDITIONS = [
   'GST shall be charged extra as applicable unless specifically stated otherwise.',
@@ -349,6 +351,8 @@ export default function SmartQuotationSystem() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeSidebarItem, setActiveSidebarItem] = useState('Quotations');
+  const [dashboardTab, setDashboardTab] = useState<'standard' | 'chiller'>('standard');
+  const [chillerMode, setChillerMode] = useState<'dashboard' | 'survey' | 'customers' | 'settings'>('dashboard');
   
   // Diff target selection
   const [diffBaseIndex, setDiffBaseIndex] = useState<number>(0);
@@ -1085,6 +1089,11 @@ export default function SmartQuotationSystem() {
   };
 
   const startNewQuote = () => {
+    if (dashboardTab === 'chiller') {
+      setActiveSidebarItem('Dashboard');
+      setChillerMode('survey');
+      return;
+    }
     setIsRevisionMode(false);
     reset({
       client_name: '',
@@ -1335,132 +1344,206 @@ export default function SmartQuotationSystem() {
               {/* A. DASHBOARD ANALYTICS OVERVIEW */}
               {activeSidebarItem === 'Dashboard' && (
                 <div className="space-y-8">
-                  {/* Stats Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {[
-                      { title: 'Pipeline Value', val: `${currencySymbol}${(quotations.reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}`, desc: 'Total quotation pipeline', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
-                      { title: 'Conversion Rate', val: `${quotations.length ? Math.round((quotations.filter(q => q.status === 'Accepted').length / quotations.length) * 100) : 0}%`, desc: 'Accepted vs Total quotes', color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-                      { title: 'Active Drafts', val: quotations.filter(q => q.status === 'Draft' || q.sync_status === 'pending').length, desc: 'Awaiting submission/sync', color: 'text-amber-600 bg-amber-50 border-amber-100' },
-                      { title: 'Total Revisions', val: quotations.reduce((acc, q) => acc + q.revision_index, 0), desc: 'Iterative review cycles', color: 'text-blue-600 bg-blue-50 border-blue-100' }
-                    ].map((c, i) => (
-                      <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm hover:shadow-md transition-all">
-                        <div className="space-y-2">
-                          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</span>
-                          <div className="text-2xl font-extrabold text-slate-900">{c.val}</div>
-                          <span className="text-[10px] text-slate-450 block font-medium">{c.desc}</span>
-                        </div>
-                        <div className={`p-3 rounded-xl border flex-shrink-0 ${c.color}`}>
-                          <FileText className="h-5 w-5" />
-                        </div>
-                      </div>
-                    ))}
+                  <div className="flex border-b border-slate-200 mb-6 bg-slate-100/60 p-1 rounded-xl w-fit">
+                    <button
+                      onClick={() => {
+                        setDashboardTab('standard');
+                        setChillerMode('dashboard');
+                      }}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Standard Quotations
+                    </button>
+                    <button
+                      onClick={() => {
+                        setDashboardTab('chiller');
+                        setChillerMode('dashboard');
+                      }}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'chiller' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Chiller Estimates
+                    </button>
                   </div>
 
-                  {/* Charts & Quick Actions Grid */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Visual CSS-based Sales Chart */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 space-y-6">
-                      <div className="flex justify-between items-center">
-                        <h3 className="font-bold text-slate-900">Value Distribution by Status</h3>
-                        <span className="text-xs text-slate-400">Live DB Metrics</span>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        {[
-                          { status: 'Accepted', color: 'bg-emerald-500', count: quotations.filter(q => q.status === 'Accepted').length },
-                          { status: 'Sent', color: 'bg-blue-500', count: quotations.filter(q => q.status === 'Sent').length },
-                          { status: 'Draft', color: 'bg-amber-500', count: quotations.filter(q => q.status === 'Draft').length },
-                          { status: 'Expired', color: 'bg-rose-500', count: quotations.filter(q => q.status === 'Expired' || q.status === 'Rejected').length },
-                        ].map((item, idx) => {
-                          const percentage = quotations.length ? Math.round((item.count / quotations.length) * 100) : 0;
-                          return (
-                            <div key={idx} className="space-y-1.5">
-                              <div className="flex justify-between text-xs font-semibold">
-                                <span className="text-slate-600 flex items-center space-x-2">
-                                  <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
-                                  <span>{item.status} ({item.count})</span>
-                                </span>
-                                <span className="text-slate-900">{percentage}%</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                                <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Quick Shortcuts */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-                      <div>
-                        <h3 className="font-bold text-slate-900 mb-2">Quick Actions</h3>
-                        <p className="text-xs text-slate-400 mb-6">Common operations for generating and managing commercial offers.</p>
-                        
-                        <div className="space-y-3">
-                          <button onClick={startNewQuote} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center space-x-2">
-                            <Plus className="h-4 w-4" />
-                            <span>Create Custom Quotation</span>
-                          </button>
-                          
-                          <button onClick={() => fileInputRef.current?.click()} className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2">
-                            <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
-                            <span>Import spreadsheet template</span>
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-6 border-t border-slate-100 pt-4 flex items-center justify-between text-xs text-slate-400">
-                        <span>Local DB Sync Mode</span>
-                        <span className="text-emerald-500 font-bold flex items-center space-x-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>IndexedDB active</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Audit Logs / Activity logs */}
-                  <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                      <h3 className="font-bold text-slate-900">Recent Server Audit Trail</h3>
-                      <button onClick={fetchAuditLogs} className="text-xs text-blue-600 font-semibold hover:underline flex items-center space-x-1">
-                        <RefreshCw className="h-3 w-3" />
-                        <span>Refresh Logs</span>
+                  {dashboardTab === 'chiller' && chillerMode === 'survey' && (
+                    <div className="flex justify-between items-center mb-2">
+                      <button
+                        onClick={() => setChillerMode('dashboard')}
+                        className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-colors"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        <span>Back to Dashboard</span>
                       </button>
                     </div>
+                  )}
 
-                    <div className="space-y-3 max-h-60 overflow-y-auto">
-                      {auditLogs.length === 0 ? (
-                        <p className="text-xs text-slate-400 text-center py-6">No server activities logged, or server currently unreachable.</p>
-                      ) : (
-                        auditLogs.slice(0, 10).map((log, idx) => (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-150 text-xs">
-                            <div className="flex items-center space-x-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                log.action.includes('CREATE') ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                log.action.includes('REVISE') ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                                'bg-slate-100 text-slate-600'
-                              }`}>
-                                {log.action}
-                              </span>
-                              <span className="font-semibold text-slate-800">Quote {log.quotation_no || 'N/A'}</span>
+                  {dashboardTab === 'chiller' ? (
+                    <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode={chillerMode} />
+                  ) : (
+                    <>
+                      {/* Stats Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {[
+                          { title: 'Pipeline Value', val: `${currencySymbol}${(quotations.reduce((acc, q) => acc + Number(q.total_amount), 0)).toLocaleString('en-IN')}`, desc: 'Total quotation pipeline', color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
+                          { title: 'Conversion Rate', val: `${quotations.length ? Math.round((quotations.filter(q => q.status === 'Accepted').length / quotations.length) * 100) : 0}%`, desc: 'Accepted vs Total quotes', color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
+                          { title: 'Active Drafts', val: quotations.filter(q => q.status === 'Draft' || q.sync_status === 'pending').length, desc: 'Awaiting submission/sync', color: 'text-amber-600 bg-amber-50 border-amber-100' },
+                          { title: 'Total Revisions', val: quotations.reduce((acc, q) => acc + q.revision_index, 0), desc: 'Iterative review cycles', color: 'text-blue-600 bg-blue-50 border-blue-100' }
+                        ].map((c, i) => (
+                          <div key={i} className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm hover:shadow-md transition-all">
+                            <div className="space-y-2">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{c.title}</span>
+                              <div className="text-2xl font-extrabold text-slate-900">{c.val}</div>
+                              <span className="text-[10px] text-slate-450 block font-medium">{c.desc}</span>
                             </div>
-                            <div className="flex items-center space-x-4 text-slate-400">
-                              <span>By: {log.username} ({log.role})</span>
-                              <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <div className={`p-3 rounded-xl border flex-shrink-0 ${c.color}`}>
+                              <FileText className="h-5 w-5" />
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                        ))}
+                      </div>
+
+                      {/* Charts & Quick Actions Grid */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Visual CSS-based Sales Chart */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm lg:col-span-2 space-y-6">
+                          <div className="flex justify-between items-center">
+                            <h3 className="font-bold text-slate-900">Value Distribution by Status</h3>
+                            <span className="text-xs text-slate-400">Live DB Metrics</span>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            {[
+                              { status: 'Accepted', color: 'bg-emerald-500', count: quotations.filter(q => q.status === 'Accepted').length },
+                              { status: 'Sent', color: 'bg-blue-500', count: quotations.filter(q => q.status === 'Sent').length },
+                              { status: 'Draft', color: 'bg-amber-500', count: quotations.filter(q => q.status === 'Draft').length },
+                              { status: 'Expired', color: 'bg-rose-500', count: quotations.filter(q => q.status === 'Expired' || q.status === 'Rejected').length },
+                            ].map((item, idx) => {
+                              const percentage = quotations.length ? Math.round((item.count / quotations.length) * 100) : 0;
+                              return (
+                                <div key={idx} className="space-y-1.5">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-slate-600 flex items-center space-x-2">
+                                      <span className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
+                                      <span>{item.status} ({item.count})</span>
+                                    </span>
+                                    <span className="text-slate-900">{percentage}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                    <div className={`h-full ${item.color} rounded-full transition-all duration-500`} style={{ width: `${percentage}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Quick Shortcuts */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                          <div>
+                            <h3 className="font-bold text-slate-900 mb-2">Quick Actions</h3>
+                            <p className="text-xs text-slate-400 mb-6">Common operations for generating and managing commercial offers.</p>
+                            
+                            <div className="space-y-3">
+                              <button onClick={startNewQuote} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center space-x-2">
+                                <Plus className="h-4 w-4" />
+                                <span>Create Custom Quotation</span>
+                              </button>
+                              
+                              <button onClick={() => fileInputRef.current?.click()} className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2">
+                                <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
+                                <span>Import spreadsheet template</span>
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-6 border-t border-slate-100 pt-4 flex items-center justify-between text-xs text-slate-400">
+                            <span>Local DB Sync Mode</span>
+                            <span className="text-emerald-500 font-bold flex items-center space-x-1">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                              <span>IndexedDB active</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Audit Logs / Activity logs */}
+                      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                          <h3 className="font-bold text-slate-900">Recent Server Audit Trail</h3>
+                          <button onClick={fetchAuditLogs} className="text-xs text-blue-600 font-semibold hover:underline flex items-center space-x-1">
+                            <RefreshCw className="h-3 w-3" />
+                            <span>Refresh Logs</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {auditLogs.length === 0 ? (
+                            <p className="text-xs text-slate-400 text-center py-6">No server activities logged, or server currently unreachable.</p>
+                          ) : (
+                            auditLogs.slice(0, 10).map((log, idx) => (
+                              <div key={idx} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-150 text-xs">
+                                <div className="flex items-center space-x-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    log.action.includes('CREATE') ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                    log.action.includes('REVISE') ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                                    'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {log.action}
+                                  </span>
+                                  <span className="font-semibold text-slate-800">Quote {log.quotation_no || 'N/A'}</span>
+                                </div>
+                                <div className="flex items-center space-x-4 text-slate-400">
+                                  <span>By: {log.username} ({log.role})</span>
+                                  <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
               {/* B. QUOTATIONS VIEW (ORIGINAL DATA TABLE) */}
               {activeSidebarItem === 'Quotations' && (
                 <div className="space-y-6">
+                  {/* Switcher between Standard and Chiller list in Quotations View */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div className="flex bg-slate-100/60 p-1 rounded-xl w-fit">
+                      <button
+                        onClick={() => setDashboardTab('standard')}
+                        className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Standard Quotations
+                      </button>
+                      <button
+                        onClick={() => setDashboardTab('chiller')}
+                        className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'chiller' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Chiller Estimates
+                      </button>
+                    </div>
+
+                    {dashboardTab === 'chiller' && (
+                      <button
+                        onClick={() => {
+                          setActiveSidebarItem('Dashboard');
+                          setChillerMode('survey');
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl flex items-center justify-center space-x-2 py-2 px-4 text-xs shadow-md shadow-blue-500/10 transition-colors"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>New Chiller Estimate</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {dashboardTab === 'chiller' ? (
+                    <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="dashboard" />
+                  ) : (
+                    <>
                   {/* Statistics Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {[
@@ -1601,12 +1684,34 @@ export default function SmartQuotationSystem() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
+            </div>
+          )}
 
               {/* C. CLIENTS DIRECTORY VIEW */}
               {activeSidebarItem === 'Clients' && (
                 <div className="space-y-6">
+                  {/* Switcher between Standard and Chiller Clients */}
+                  <div className="flex border-b border-slate-200 mb-6 bg-slate-100/60 p-1 rounded-xl w-fit">
+                    <button
+                      onClick={() => setDashboardTab('standard')}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Standard Clients
+                    </button>
+                    <button
+                      onClick={() => setDashboardTab('chiller')}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'chiller' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Chiller Customers
+                    </button>
+                  </div>
+
+                  {dashboardTab === 'chiller' ? (
+                    <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="customers" />
+                  ) : (
+                    <>
                   {/* Dynamic stats */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
                     <div>
@@ -1672,6 +1777,8 @@ export default function SmartQuotationSystem() {
                       </div>
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1946,7 +2053,27 @@ export default function SmartQuotationSystem() {
 
               {/* G. SETTINGS VIEW */}
               {activeSidebarItem === 'Settings' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  {/* Switcher between Standard Settings and Chiller Rate Cards */}
+                  <div className="flex border-b border-slate-200 mb-6 bg-slate-100/60 p-1 rounded-xl w-fit">
+                    <button
+                      onClick={() => setDashboardTab('standard')}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Standard Settings
+                    </button>
+                    <button
+                      onClick={() => setDashboardTab('chiller')}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'chiller' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Chiller Rate Cards
+                    </button>
+                  </div>
+
+                  {dashboardTab === 'chiller' ? (
+                    <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="settings" />
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Preferences Card */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
                     <div>
@@ -2042,6 +2169,8 @@ export default function SmartQuotationSystem() {
                       </div>
                     </div>
                   </div>
+                    </div>
+                  )}
                 </div>
               )}
 
