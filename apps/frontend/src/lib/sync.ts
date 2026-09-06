@@ -2,7 +2,7 @@ import { db } from './db';
 
 const host = typeof window !== 'undefined'
   ? window.location.hostname
-  : 'localhost';
+  : '127.0.0.1';
 const API_BASE = `http://${host}:5000/api`;
 
 function getAuthHeaders(): Record<string, string> {

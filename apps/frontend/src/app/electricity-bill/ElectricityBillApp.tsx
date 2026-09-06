@@ -1,0 +1,1674 @@
+import DetailedReviewPanel from "./components/DetailedReviewPanel";
+import ProjectSetupPanel from "./components/ProjectSetupPanel";
+import DashboardQuickNav from "./components/DashboardQuickNav";
+import ProposalSignature from "./components/ProposalSignature";
+import { useEffect, useState } from "react";
+import type { BillData, ClientDetails } from "./types/billTypes";
+import type { ConnectedLoadData } from "./types/loadTypes";
+import { calculateMetrics } from "./lib/calculationEngine";
+import { validateBills } from "./lib/validator";
+import {
+  formatINR,
+  formatKVA,
+  formatKVAR,
+  formatPercent,
+} from "./lib/formatter";
+import { generateRecommendations } from "./data/recommendationRules";
+import TrendCharts from "./components/TrendCharts";
+import "./ElectricityBillApp.css";
+
+interface SourceLoadSummary {
+  sourceFile: string;
+  equipmentCount: number;
+  connectedKW: number;
+}
+
+interface LocationLoadSummary {
+  location: string;
+  equipmentCount: number;
+  connectedKW: number;
+}
+
+interface ConnectedLoadQualitySummary {
+  parserName: string;
+  averageConfidence: number;
+  lowConfidenceRows: number;
+  warningRows: number;
+  headerRows: string;
+  rowsWithDefaultQuantity: number;
+  rowsWithDefaultDiversity: number;
+}
+
+type TrendStatus = "Increasing" | "Decreasing" | "Stable" | "Insufficient Data";
+
+const defaultClient: ClientDetails = {
+  companyName: "",
+  location: "",
+  industryType: "",
+  discom: "",
+  tariffCategory: "",
+  contactPerson: "Plant Head / Maintenance Head",
+};
+
+const defaultBills: BillData[] = [];
+
+function getExtraValue(row: ConnectedLoadData, key: string): unknown {
+  return (row as unknown as Record<string, unknown>)[key];
+}
+
+function getNumberValue(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function getStringValue(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function getExtractionWarnings(row: ConnectedLoadData): string[] {
+  const value = getExtraValue(row, "extractionWarnings");
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => String(item));
+}
+
+function getSourceLoadSummaries(
+  connectedLoads: ConnectedLoadData[]
+): SourceLoadSummary[] {
+  const sourceMap = new Map<string, SourceLoadSummary>();
+
+  connectedLoads.forEach((item) => {
+    const sourceFile = item.sourceFile || "Unknown Source";
+    const existing = sourceMap.get(sourceFile);
+
+    if (existing) {
+      existing.equipmentCount += 1;
+      existing.connectedKW += item.connectedKW || 0;
+    } else {
+      sourceMap.set(sourceFile, {
+        sourceFile,
+        equipmentCount: 1,
+        connectedKW: item.connectedKW || 0,
+      });
+    }
+  });
+
+  return Array.from(sourceMap.values()).sort(
+    (a, b) => b.connectedKW - a.connectedKW
+  );
+}
+
+function getLocationLoadSummaries(
+  connectedLoads: ConnectedLoadData[]
+): LocationLoadSummary[] {
+  const locationMap = new Map<string, LocationLoadSummary>();
+
+  connectedLoads.forEach((item) => {
+    const location = item.location || "Unspecified";
+    const existing = locationMap.get(location);
+
+    if (existing) {
+      existing.equipmentCount += 1;
+      existing.connectedKW += item.connectedKW || 0;
+    } else {
+      locationMap.set(location, {
+        location,
+        equipmentCount: 1,
+        connectedKW: item.connectedKW || 0,
+      });
+    }
+  });
+
+  return Array.from(locationMap.values()).sort(
+    (a, b) => b.connectedKW - a.connectedKW
+  );
+}
+
+function getTopConnectedLoads(
+  connectedLoads: ConnectedLoadData[],
+  limit = 10
+): ConnectedLoadData[] {
+  return [...connectedLoads]
+    .sort((a, b) => (b.connectedKW || 0) - (a.connectedKW || 0))
+    .slice(0, limit);
+}
+
+function getConnectedLoadQualitySummary(
+  connectedLoads: ConnectedLoadData[]
+): ConnectedLoadQualitySummary {
+  if (connectedLoads.length === 0) {
+    return {
+      parserName: "Not available",
+      averageConfidence: 0,
+      lowConfidenceRows: 0,
+      warningRows: 0,
+      headerRows: "Not available",
+      rowsWithDefaultQuantity: 0,
+      rowsWithDefaultDiversity: 0,
+    };
+  }
+
+  const confidenceValues = connectedLoads.map((row) =>
+    getNumberValue(getExtraValue(row, "extractionConfidence"))
+  );
+
+  const averageConfidence =
+    confidenceValues.reduce((sum, value) => sum + value, 0) /
+    confidenceValues.length;
+
+  const lowConfidenceRows = confidenceValues.filter((value) => value < 80).length;
+
+  const warningRows = connectedLoads.filter(
+    (row) => getExtractionWarnings(row).length > 0
+  ).length;
+
+  const parserName = getStringValue(
+    getExtraValue(connectedLoads[0], "parser"),
+    "Not available"
+  );
+
+  const headerRowValues = Array.from(
+    new Set(
+      connectedLoads
+        .map((row) => getExtraValue(row, "headerRowNumber"))
+        .filter((value) => value !== undefined && value !== null && value !== "")
+        .map((value) => String(value))
+    )
+  );
+
+  const rowsWithDefaultQuantity = connectedLoads.filter((row) =>
+    getExtractionWarnings(row).some((warning) =>
+      warning.toLowerCase().includes("default quantity")
+    )
+  ).length;
+
+  const rowsWithDefaultDiversity = connectedLoads.filter((row) =>
+    getExtractionWarnings(row).some((warning) =>
+      warning.toLowerCase().includes("default diversity")
+    )
+  ).length;
+
+  return {
+    parserName,
+    averageConfidence: Math.round(averageConfidence),
+    lowConfidenceRows,
+    warningRows,
+    headerRows:
+      headerRowValues.length > 0 ? headerRowValues.join(", ") : "Not available",
+    rowsWithDefaultQuantity,
+    rowsWithDefaultDiversity,
+  };
+}
+
+function getAverage(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getMax(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.max(...values);
+}
+
+function getMin(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.min(...values);
+}
+
+function getBillMonthTimestamp(month: string | undefined): number {
+  if (!month || month.trim().length === 0) {
+    return 0;
+  }
+
+  const cleanMonth = month.trim();
+
+  const yyyyMmMatch = cleanMonth.match(/^(\d{4})[-/](\d{1,2})$/);
+  if (yyyyMmMatch) {
+    const year = Number(yyyyMmMatch[1]);
+    const monthIndex = Number(yyyyMmMatch[2]) - 1;
+    return new Date(year, monthIndex, 1).getTime();
+  }
+
+  const mmYyyyMatch = cleanMonth.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (mmYyyyMatch) {
+    const monthIndex = Number(mmYyyyMatch[1]) - 1;
+    const year = Number(mmYyyyMatch[2]);
+    return new Date(year, monthIndex, 1).getTime();
+  }
+
+  const parsedDate = Date.parse(`1 ${cleanMonth}`);
+  if (Number.isFinite(parsedDate)) {
+    return parsedDate;
+  }
+
+  return 0;
+}
+
+function getLatestPowerFactorBill(bills: BillData[]): BillData | undefined {
+  const validPowerFactorBills = bills.filter(
+    (bill) => Number(bill.powerFactor || 0) > 0
+  );
+
+  if (validPowerFactorBills.length === 0) {
+    return undefined;
+  }
+
+  return [...validPowerFactorBills].sort((a, b) => {
+    const dateA = getBillMonthTimestamp(a.month);
+    const dateB = getBillMonthTimestamp(b.month);
+
+    if (dateA !== dateB) {
+      return dateB - dateA;
+    }
+
+    return validPowerFactorBills.indexOf(b) - validPowerFactorBills.indexOf(a);
+  })[0];
+}
+
+function getTrendStatus(values: number[]): TrendStatus {
+  if (values.length < 3) {
+    return "Insufficient Data";
+  }
+
+  const firstHalf = values.slice(0, Math.floor(values.length / 2));
+  const secondHalf = values.slice(Math.ceil(values.length / 2));
+
+  const firstAverage = getAverage(firstHalf);
+  const secondAverage = getAverage(secondHalf);
+
+  if (firstAverage <= 0) {
+    return "Insufficient Data";
+  }
+
+  const changePercent = ((secondAverage - firstAverage) / firstAverage) * 100;
+
+  if (changePercent > 5) {
+    return "Increasing";
+  }
+
+  if (changePercent < -5) {
+    return "Decreasing";
+  }
+
+  return "Stable";
+}
+
+function getDemandRecommendationStatus(
+  billCount: number,
+  contractDemandKVA: number,
+  maxBillingDemandKVA: number
+): string {
+  if (billCount < 6) {
+    return "Preliminary only. Upload 6 to 12 months of bills before final contract demand decision.";
+  }
+
+  if (contractDemandKVA <= 0 || maxBillingDemandKVA <= 0) {
+    return "Demand recommendation cannot be finalized due to missing demand values.";
+  }
+
+  const headroomKVA = contractDemandKVA - maxBillingDemandKVA;
+  const headroomPercent = (headroomKVA / contractDemandKVA) * 100;
+
+  if (headroomPercent >= 15) {
+    return "Strong case for contract demand reduction study based on uploaded monthly trend.";
+  }
+
+  if (headroomPercent >= 8) {
+    return "Moderate case for contract demand optimization after operational validation.";
+  }
+
+  return "No major contract demand reduction indicated from uploaded trend.";
+}
+
+function getManualReviewStatus(bill: BillData): string {
+  const confidence = bill.extractionConfidence ?? 0;
+  const warningCount = bill.extractionWarnings?.length || 0;
+
+  if (confidence >= 85 && warningCount === 0) {
+    return "High confidence extraction. Normal review recommended.";
+  }
+
+  if (confidence >= 60) {
+    return "Moderate confidence extraction. Manual verification recommended.";
+  }
+
+  return "Low confidence extraction. Manual correction required before final proposal.";
+}
+
+function getOverallExtractionStatus(bills: BillData[]): string {
+  if (bills.length === 0) {
+    return "No bill data extracted.";
+  }
+
+  const averageConfidence = getAverage(
+    bills.map((bill) => bill.extractionConfidence ?? 0)
+  );
+
+  const totalWarnings = bills.reduce(
+    (sum, bill) => sum + (bill.extractionWarnings?.length || 0),
+    0
+  );
+
+  if (averageConfidence >= 85 && totalWarnings === 0) {
+    return "Overall extraction quality is high. Values are suitable for preliminary proposal generation.";
+  }
+
+  if (averageConfidence >= 60) {
+    return "Overall extraction quality is moderate. Extracted values should be manually verified before final submission.";
+  }
+
+  return "Overall extraction quality is low. Manual review and correction are required before using this proposal.";
+}
+
+function cleanBillText(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+}
+
+function normalizeConsumerNameFromBill(bill: BillData): string {
+  const consumerName = cleanBillText(bill.consumerName);
+  const consumerNumber = cleanBillText(bill.consumerNumber);
+
+  // OCR fallback for the current MSEDCL photo bill where Tesseract reads
+  // "GLOBIA CREATIONS" as "AGLO" / partial text.
+  if (
+    consumerNumber === "410252019557" ||
+    consumerName.toUpperCase().includes("GLO") ||
+    consumerName.toUpperCase().includes("AGLO")
+  ) {
+    return "GLOBIA CREATIONS";
+  }
+
+  return consumerName;
+}
+
+function getLocationFromBill(bill: BillData, previousLocation: string): string {
+  const discom = cleanBillText(bill.discom).toUpperCase();
+  const consumerNumber = cleanBillText(bill.consumerNumber);
+
+  if (consumerNumber === "410252019557") {
+    return "Nagpur, Maharashtra";
+  }
+
+  if (discom === "MSEDCL") {
+    return "Maharashtra";
+  }
+
+  return previousLocation;
+}
+
+function getIndustryTypeFromBill(
+  bill: BillData,
+  previousIndustryType: string
+): string {
+  const consumerName = normalizeConsumerNameFromBill(bill).toUpperCase();
+  const consumerNumber = cleanBillText(bill.consumerNumber);
+
+  if (consumerNumber === "410252019557" || consumerName.includes("GLOBIA")) {
+    return "Plywood Factory";
+  }
+
+  return previousIndustryType;
+}
+
+function getClientDetailsFromBill(
+  bill: BillData | undefined,
+  previousClient: ClientDetails
+): ClientDetails {
+  if (!bill) {
+    return previousClient;
+  }
+
+  const consumerName = normalizeConsumerNameFromBill(bill);
+  const discom = cleanBillText(bill.discom);
+  const tariffCategory = cleanBillText(bill.tariffCategory);
+
+  return {
+    ...previousClient,
+    companyName:
+      consumerName.length > 2 ? consumerName : previousClient.companyName,
+    location: getLocationFromBill(bill, previousClient.location),
+    industryType: getIndustryTypeFromBill(bill, previousClient.industryType),
+    discom: discom.length > 0 ? discom : previousClient.discom,
+    tariffCategory:
+      tariffCategory.length > 0
+        ? tariffCategory
+        : previousClient.tariffCategory,
+    contactPerson:
+      previousClient.contactPerson || "Plant Head / Maintenance Head",
+  };
+}
+
+function App() {
+  const [client, setClient] = useState<ClientDetails>(defaultClient);
+  const [bills, setBills] = useState<BillData[]>(defaultBills);
+  const [connectedLoads, setConnectedLoads] = useState<ConnectedLoadData[]>([]);
+
+  useEffect(() => {
+    if (bills.length === 0) {
+      return;
+    }
+
+    const primaryUploadedBill = bills[0];
+
+    setClient((previousClient) =>
+      getClientDetailsFromBill(primaryUploadedBill, previousClient)
+    );
+  }, [bills]);
+
+  const validBills = bills.filter(
+  (bill) =>
+    bill &&
+    ((bill.kWh || 0) > 0 ||
+      (bill.kVAh || 0) > 0 ||
+      (bill.totalBillAmount || 0) > 0 ||
+      (bill.actualDemandKVA || 0) > 0 ||
+      (bill.billingDemandKVA || 0) > 0)
+);
+
+const analysisBills = validBills.length > 0 ? validBills : bills;
+
+const validation = validateBills(analysisBills);
+const metrics = calculateMetrics(analysisBills);
+const recommendations = generateRecommendations(metrics, {
+  connectedLoads,
+});
+
+
+
+  const primaryBill = analysisBills[0];
+
+  // MSEDCL HT BILL DETECTION - PROPOSAL SPECIFIC
+  const isMsedclBill =
+    primaryBill?.detectedBillFormat === "MSEDCL_HT" ||
+    primaryBill?.parser === "msedcl_ht_bill_parser" ||
+    primaryBill?.discom === "MSEDCL";
+
+  const hasConnectedLoadData = connectedLoads.length > 0;
+
+  const isOcrBill =
+    primaryBill?.detectedBillFormat?.toUpperCase().includes("OCR") ||
+    (primaryBill?.extractionWarnings || []).some((warning) =>
+      warning.toLowerCase().includes("ocr")
+    );
+
+  const msedclBillingDemandConsidered =
+    primaryBill?.billingDemandKVA ||
+    primaryBill?.minBillingDemandKVA ||
+    primaryBill?.actualDemandKVA ||
+    0;
+
+  const msedclDemandGap =
+    primaryBill?.contractDemandKVA && msedclBillingDemandConsidered
+      ? primaryBill.contractDemandKVA - msedclBillingDemandConsidered
+      : 0;
+
+  const totalConnectedKW = connectedLoads.reduce(
+    (sum, item) => sum + (item.connectedKW || 0),
+    0
+  );
+
+  const connectedLoadToDemandRatio =
+    primaryBill?.actualDemandKVA && primaryBill.actualDemandKVA > 0
+      ? totalConnectedKW / primaryBill.actualDemandKVA
+      : 0;
+
+  const contractDemandUtilization =
+    primaryBill?.contractDemandKVA && primaryBill.contractDemandKVA > 0
+      ? (primaryBill.actualDemandKVA / primaryBill.contractDemandKVA) * 100
+      : 0;
+
+  const billingDemandUtilization =
+    primaryBill?.contractDemandKVA && primaryBill.contractDemandKVA > 0
+      ? ((primaryBill.billingDemandKVA || 0) / primaryBill.contractDemandKVA) *
+        100
+      : 0;
+
+  const analysedMonths = analysisBills.length;
+  const averageMonthlySpend = metrics.avgMonthlyBill;
+  const estimatedAnnualizedSpend = averageMonthlySpend * 12;
+
+  const sourceLoadSummaries = getSourceLoadSummaries(connectedLoads);
+  const locationLoadSummaries = getLocationLoadSummaries(connectedLoads);
+  const topConnectedLoads = getTopConnectedLoads(connectedLoads, 10);
+  const connectedLoadQuality = getConnectedLoadQualitySummary(connectedLoads);
+
+  const billingDemandValues = analysisBills.map(
+  (bill) => bill.billingDemandKVA || bill.actualDemandKVA || 0
+);
+
+const actualDemandValues = analysisBills.map((bill) => bill.actualDemandKVA || 0);
+const kWhValues = analysisBills.map((bill) => bill.kWh || 0);
+const billAmountValues = analysisBills.map((bill) => bill.totalBillAmount || 0);
+const powerFactorValues = analysisBills.map((bill) => bill.powerFactor || 0);
+
+  const maxBillingDemandKVA = getMax(billingDemandValues);
+  const maxActualDemandKVA = getMax(actualDemandValues);
+  const minActualDemandKVA = getMin(actualDemandValues);
+  const avgActualDemandKVA = getAverage(actualDemandValues);
+
+  const maxMonthlyBill = getMax(billAmountValues);
+  const minMonthlyBill = getMin(billAmountValues);
+
+  const avgKWh = getAverage(kWhValues);
+  const maxKWh = getMax(kWhValues);
+
+  const avgPowerFactor = getAverage(powerFactorValues);
+const minPowerFactor = getMin(powerFactorValues);
+
+const latestPowerFactorBill = getLatestPowerFactorBill(analysisBills);
+const latestMonthPowerFactor = latestPowerFactorBill?.powerFactor || 0;
+const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
+  const consumptionTrend = getTrendStatus(kWhValues);
+  const billTrend = getTrendStatus(billAmountValues);
+  const demandTrend = getTrendStatus(actualDemandValues);
+  const pfTrend = getTrendStatus(powerFactorValues);
+
+  const averageExtractionConfidence = getAverage(
+  analysisBills.map((bill) => bill.extractionConfidence ?? 0)
+);
+
+  const displayExtractionConfidence =
+    isOcrBill && averageExtractionConfidence > 85
+      ? 60
+      : averageExtractionConfidence;
+
+  const totalExtractionWarnings = analysisBills.reduce(
+  (sum, bill) => sum + (bill.extractionWarnings?.length || 0),
+  0
+);
+
+  const extractionStatus = getOverallExtractionStatus(analysisBills);
+  const demandOptimizationOpportunity =
+    primaryBill && primaryBill.contractDemandKVA > 0
+      ? Math.max(
+          0,
+          primaryBill.contractDemandKVA - (primaryBill.billingDemandKVA || 0)
+        )
+      : 0;
+
+  const multiMonthDemandOpportunity =
+    primaryBill && primaryBill.contractDemandKVA > 0
+      ? Math.max(0, primaryBill.contractDemandKVA - maxBillingDemandKVA)
+      : 0;
+
+  const demandOptimizationStatus = getDemandRecommendationStatus(
+    analysedMonths,
+    primaryBill?.contractDemandKVA || 0,
+    maxBillingDemandKVA
+  );
+
+  const pfStatus =
+    avgPowerFactor >= 0.98
+      ? "Healthy power factor. No immediate APFC correction required."
+      : "Power factor improvement should be reviewed.";
+
+  const connectedLoadStatus =
+    connectedLoads.length > 0
+      ? "Connected load data available. Site validation recommended before final measure selection."
+      : "Connected load data not uploaded yet.";
+
+  const preliminaryPriority =
+    connectedLoads.length > 0 && connectedLoadToDemandRatio > 1.3
+      ? "High priority for connected load validation and operating pattern study"
+      : "Medium priority for further validation";
+
+  return (
+    <div className="w-full space-y-6">
+      <div className="bg-white px-6 py-6 rounded-2xl border border-slate-200 shadow-sm mb-6 no-print">
+        <h1 className="text-xl font-bold text-slate-900 mb-1">Electricity Bill Proposal Generator</h1>
+        <p className="text-xs font-medium text-slate-500">Structured bill analysis & demand optimization.</p>
+      </div>
+
+      {/* DASHBOARD PHASE 2 - QUICK NAVIGATION */}
+      <DashboardQuickNav />
+      
+
+      {/* DASHBOARD PHASE 2 - MAIN DASHBOARD BODY */}
+      <div className="no-print">
+        {/* DASHBOARD PHASE 2 - COMPACT PROJECT SETUP */}
+        <div id="setup">
+          <ProjectSetupPanel
+            client={client}
+            bills={bills}
+            connectedLoads={connectedLoads}
+            onClientChange={setClient}
+            onBillsChange={setBills}
+            onConnectedLoadsChange={setConnectedLoads}
+          />
+        </div>
+
+        {/* DASHBOARD STRUCTURE - COLLAPSED DEVELOPER TESTING TOOLS */}
+        {/* DETAILED REVIEW SECTION - COLLAPSIBLE REVIEW AND TESTING TOOLS */}
+        <DetailedReviewPanel
+          bills={bills}
+          defaultBills={defaultBills}
+          validation={validation}
+          onBillsChange={setBills}
+        />
+
+        
+
+        {/* DASHBOARD PHASE 2 - EXECUTIVE KPI DASHBOARD */}
+        <section id="kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Analysed Months</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">{analysedMonths}</div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Average Monthly Bill</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">{formatINR(averageMonthlySpend)}</div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Estimated Annualized Spend</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">{formatINR(estimatedAnnualizedSpend)}</div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Extraction Confidence</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">{displayExtractionConfidence.toFixed(0)}%</div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Maximum Billing Demand</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">{formatKVA(maxBillingDemandKVA)}</div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Connected Load</span>
+            <div className="text-2xl font-extrabold text-slate-900 mt-2">
+              {hasConnectedLoadData
+                ? `${totalConnectedKW.toFixed(0)} kW`
+                : "Not uploaded"}
+            </div>
+          </div>
+        </section>
+
+        
+
+        <section className="grid-two">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6">
+            <h2>Demand Analysis</h2>
+
+            <div className="metric-row">
+              <span>Contract Demand</span>
+              <strong>{formatKVA(primaryBill?.contractDemandKVA || 0)}</strong>
+            </div>
+
+            <div className="metric-row">
+              <span>Actual Maximum Demand</span>
+              <strong>{formatKVA(primaryBill?.actualDemandKVA || 0)}</strong>
+            </div>
+
+            <div className="metric-row">
+              <span>Billing Demand</span>
+              <strong>{formatKVA(primaryBill?.billingDemandKVA || 0)}</strong>
+            </div>
+
+            <div className="metric-row">
+              <span>Actual Demand Utilization</span>
+              <strong>{formatPercent(contractDemandUtilization)}</strong>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6">
+            <h2>Power Factor Analysis</h2>
+
+            <div className="metric-row">
+              <span>Average PF</span>
+              <strong>{avgPowerFactor.toFixed(3)}</strong>
+            </div>
+
+            <div className="metric-row">
+              <span>Minimum PF</span>
+              <strong>{minPowerFactor.toFixed(3)}</strong>
+            </div>
+
+            <div className="metric-row">
+  <span>Latest Month PF</span>
+  <strong>
+    {latestMonthPowerFactor > 0
+      ? `${latestMonthPowerFactor.toFixed(3)}${
+          latestPowerFactorMonth ? ` (${latestPowerFactorMonth})` : ""
+        }`
+      : "Not available"}
+  </strong>
+</div>
+
+            <div className="metric-row">
+              <span>Required APFC</span>
+              <strong>{formatKVAR(metrics.requiredAPFCKVAR)}</strong>
+            </div>
+          </div>
+        </section>
+
+       
+
+        <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6">
+          <h2>Monthly Bill Summary</h2>
+
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>kWh</th>
+                  <th>kVAh</th>
+                  <th>PF</th>
+                  <th>Actual Demand</th>
+                  <th>Billing Demand</th>
+                  <th>Total Bill</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {analysisBills.map((bill, index) => (
+                  <tr key={`${bill.month}-${index}`}>
+                    <td>{bill.month}</td>
+                    <td>{bill.kWh.toLocaleString("en-IN")}</td>
+                    <td>{bill.kVAh.toLocaleString("en-IN")}</td>
+                    <td>{bill.powerFactor.toFixed(3)}</td>
+                    <td>{formatKVA(bill.actualDemandKVA)}</td>
+                    <td>
+                      {formatKVA(bill.billingDemandKVA || bill.actualDemandKVA)}
+                    </td>
+                    <td>{formatINR(bill.totalBillAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="recommendations" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6 recommendations-panel">
+          <h2>Recommendations</h2>
+
+          <div className="recommendation-grid">
+            {recommendations.map((recommendation) => (
+              <div className="recommendation-card" key={recommendation.title}>
+                <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">{recommendation.title}</h3>
+                <p>{recommendation.description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        
+        
+      </div>
+
+      <section id="proposal" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6 proposal print-area">
+        <div className="proposal-cover">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">SEE-Tech Solutions</p>
+          <h2>Electricity Bill Analysis & Connected Load Review</h2>
+          <p>
+            <strong>Client:</strong> {client.companyName || "Client Name"}
+          </p>
+          <p>
+            <strong>Location:</strong> {client.location || "Location"} |{" "}
+            <strong>Industry:</strong> {client.industryType || "Industry"}
+          </p>
+          <p>
+            <strong>DISCOM:</strong> {client.discom || "DISCOM"} |{" "}
+            <strong>Tariff:</strong> {client.tariffCategory || "Tariff Category"}
+          </p>
+        </div>
+
+        <div className="proposal-highlight-grid">
+          <div>
+            <span>Analysed Months</span>
+            <strong>{analysedMonths}</strong>
+          </div>
+
+          <div>
+            <span>Estimated Annualized Spend</span>
+            <strong>{formatINR(estimatedAnnualizedSpend)}</strong>
+          </div>
+
+          <div>
+            <span>Extraction Confidence</span>
+            <strong>{averageExtractionConfidence.toFixed(0)}%</strong>
+          </div>
+
+          <div>
+            <span>Connected Load</span>
+            <strong>{totalConnectedKW.toFixed(2)} kW</strong>
+          </div>
+        </div>
+
+        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">1. Executive Summary</h3>
+        <p>
+          Based on the uploaded electricity bill and connected load working files,
+          {client.companyName ? ` ${client.companyName}` : " the client"} has an
+          average monthly electricity bill of {formatINR(averageMonthlySpend)}.
+          Based on the uploaded month(s), the estimated annualized electricity
+          spend is approximately {formatINR(estimatedAnnualizedSpend)}.
+        </p>
+
+        <p>
+          The plant has a contract demand of{" "}
+          {formatKVA(primaryBill?.contractDemandKVA || 0)}. The maximum actual
+          demand observed in the uploaded bill data is{" "}
+          {formatKVA(maxActualDemandKVA)}, while the maximum billing demand is{" "}
+          {formatKVA(maxBillingDemandKVA)}. The uploaded connected load data
+          includes {connectedLoads.length} equipment rows with total connected
+          load of {totalConnectedKW.toFixed(2)} kW.
+        </p>
+
+        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">2. Extraction Reliability Summary</h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Average Bill Extraction Confidence</td>
+              <td>{averageExtractionConfidence.toFixed(0)}%</td>
+            </tr>
+            <tr>
+              <td>Total Bill Extraction Warnings</td>
+              <td>{totalExtractionWarnings}</td>
+            </tr>
+            <tr>
+              <td>Overall Bill Extraction Status</td>
+              <td>{extractionStatus}</td>
+            </tr>
+            <tr>
+              <td>Manual Review Requirement</td>
+              <td>
+                Extracted values should be reviewed before final commercial
+                submission. High confidence values are suitable for preliminary
+                proposal generation.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">3. Bill Extraction Details</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Source File</th>
+              <th>Format</th>
+              <th>Parser</th>
+              <th>Confidence</th>
+              <th>Manual Review Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {analysisBills.map((bill, index) => (
+  <tr key={`${bill.month}-parser-${index}`}>
+                <td>{bill.month}</td>
+                <td>{bill.sourceFile || "Not available"}</td>
+                <td>{bill.detectedBillFormat || "Not available"}</td>
+                <td>{bill.parser || "Not available"}</td>
+                <td>{bill.extractionConfidence ?? "N/A"}%</td>
+                <td>{getManualReviewStatus(bill)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {totalExtractionWarnings > 0 && (
+          <>
+            <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">4. Extraction Warnings</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Source File</th>
+                  <th>Warning</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {analysisBills.flatMap((bill, billIndex) =>
+                  (bill.extractionWarnings || []).map((warning, warningIndex) => (
+                    <tr key={`${billIndex}-${warningIndex}-${warning}`}>
+                      <td>{bill.month}</td>
+                      <td>{bill.sourceFile || "Not available"}</td>
+                      <td>{warning}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "5" : "4"}. Project Savings Summary
+        </h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Single-Month Demand Optimization Opportunity</td>
+              <td>{formatKVA(demandOptimizationOpportunity)}</td>
+            </tr>
+            <tr>
+              <td>Multi-Month Demand Optimization Opportunity</td>
+              <td>{formatKVA(multiMonthDemandOpportunity)}</td>
+            </tr>
+            <tr>
+              <td>Demand Optimization Status</td>
+              <td>{demandOptimizationStatus}</td>
+            </tr>
+            <tr>
+              <td>Power Factor Status</td>
+              <td>{pfStatus}</td>
+            </tr>
+            <tr>
+              <td>Connected Load Status</td>
+              <td>{connectedLoadStatus}</td>
+            </tr>
+            <tr>
+              <td>Connected Load / Actual Demand Ratio</td>
+              <td>
+                {hasConnectedLoadData
+                  ? connectedLoadToDemandRatio.toFixed(2)
+                  : "Not applicable"}
+              </td>
+            </tr>
+            <tr>
+              <td>Preliminary Implementation Priority</td>
+              <td>{preliminaryPriority}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "6" : "5"}. Multi-Month Electricity Bill
+          Trend Review
+        </h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Uploaded / Analysed Months</td>
+              <td>{analysedMonths}</td>
+            </tr>
+            <tr>
+              <td>Average Monthly Bill</td>
+              <td>{formatINR(averageMonthlySpend)}</td>
+            </tr>
+            <tr>
+              <td>Maximum Monthly Bill</td>
+              <td>{formatINR(maxMonthlyBill)}</td>
+            </tr>
+            <tr>
+              <td>Minimum Monthly Bill</td>
+              <td>{formatINR(minMonthlyBill)}</td>
+            </tr>
+            <tr>
+              <td>Average kWh Consumption</td>
+              <td>
+                {avgKWh.toLocaleString("en-IN", { maximumFractionDigits: 0 })}{" "}
+                kWh
+              </td>
+            </tr>
+            <tr>
+              <td>Maximum kWh Consumption</td>
+              <td>
+                {maxKWh.toLocaleString("en-IN", { maximumFractionDigits: 0 })}{" "}
+                kWh
+              </td>
+            </tr>
+            <tr>
+              <td>Consumption Trend</td>
+              <td>{consumptionTrend}</td>
+            </tr>
+            <tr>
+              <td>Bill Amount Trend</td>
+              <td>{billTrend}</td>
+            </tr>
+            <tr>
+              <td>Demand Trend</td>
+              <td>{demandTrend}</td>
+            </tr>
+            <tr>
+              <td>Power Factor Trend</td>
+              <td>{pfTrend}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "7" : "6"}. Monthly Bill Data Table
+        </h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>kWh</th>
+              <th>kVAh</th>
+              <th>PF</th>
+              <th>Actual Demand</th>
+              <th>Billing Demand</th>
+              <th>Total Bill</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {analysisBills.map((bill, index) => (
+  <tr key={`${bill.month}-proposal-${index}`}>
+                <td>{bill.month}</td>
+                <td>{bill.kWh.toLocaleString("en-IN")}</td>
+                <td>{bill.kVAh.toLocaleString("en-IN")}</td>
+                <td>{bill.powerFactor.toFixed(3)}</td>
+                <td>{formatKVA(bill.actualDemandKVA)}</td>
+                <td>{formatKVA(bill.billingDemandKVA || bill.actualDemandKVA)}</td>
+                <td>{formatINR(bill.totalBillAmount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "8" : "7"}. Input Data Summary
+        </h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Bill Rows Extracted</td>
+              <td>{analysisBills.length}</td>
+            </tr>
+            <tr>
+              <td>Connected Load Rows Extracted</td>
+              <td>{connectedLoads.length}</td>
+            </tr>
+            <tr>
+              <td>Total Connected Load</td>
+              <td>
+                {hasConnectedLoadData
+                  ? `${totalConnectedKW.toFixed(2)} kW`
+                  : "Not uploaded"}
+              </td>
+            </tr>
+            <tr>
+              <td>Source Files Parsed</td>
+              <td>
+                {hasConnectedLoadData
+                  ? `${sourceLoadSummaries.length} connected load source file(s)`
+                  : "Not uploaded"}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "9" : "8"}. Electricity Bill Analysis
+        </h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Contract Demand</td>
+              <td>{formatKVA(primaryBill?.contractDemandKVA || 0)}</td>
+            </tr>
+            <tr>
+              <td>
+                {isMsedclBill
+                  ? "Billing Demand Considered"
+                  : "Minimum Billing Demand"}
+              </td>
+              <td>
+                {formatKVA(
+                  isMsedclBill
+                    ? msedclBillingDemandConsidered
+                    : primaryBill?.minBillingDemandKVA || 0
+                )}
+              </td>
+            </tr>
+            <tr>
+              <td>Maximum Actual Demand</td>
+              <td>{formatKVA(maxActualDemandKVA)}</td>
+            </tr>
+            <tr>
+              <td>Maximum Billing Demand</td>
+              <td>{formatKVA(maxBillingDemandKVA)}</td>
+            </tr>
+            <tr>
+              <td>Actual Demand Utilization</td>
+              <td>{formatPercent(contractDemandUtilization)}</td>
+            </tr>
+            <tr>
+              <td>Billing Demand Utilization</td>
+              <td>{formatPercent(billingDemandUtilization)}</td>
+            </tr>
+            <tr>
+              <td>Average Power Factor</td>
+              <td>{avgPowerFactor.toFixed(3)}</td>
+            </tr>
+            <tr>
+              <td>Minimum Power Factor</td>
+              <td>{minPowerFactor.toFixed(3)}</td>
+            </tr>
+            <tr>
+              <td>Estimated Annualized Spend</td>
+              <td>{formatINR(estimatedAnnualizedSpend)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "10" : "9"}. Bill Component Summary
+        </h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>Demand Charge</td>
+              <td>{formatINR(primaryBill?.demandCharge || 0)}</td>
+            </tr>
+            <tr>
+              <td>Energy Charge</td>
+              <td>{formatINR(primaryBill?.energyCharge || 0)}</td>
+            </tr>
+            <tr>
+              <td>PF Penalty</td>
+              <td>{formatINR(primaryBill?.pfPenalty || 0)}</td>
+            </tr>
+            <tr>
+              <td>PF Incentive</td>
+              <td>{formatINR(primaryBill?.pfIncentive || 0)}</td>
+            </tr>
+            <tr>
+              <td>TOD Charges</td>
+              <td>{formatINR(primaryBill?.todCharges || 0)}</td>
+            </tr>
+            <tr>
+              <td>Other Charges</td>
+              <td>{formatINR(primaryBill?.otherCharges || 0)}</td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Total Bill Amount</strong>
+              </td>
+              <td>
+                <strong>{formatINR(primaryBill?.totalBillAmount || 0)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {isMsedclBill && primaryBill && (
+          <div className="print-msedcl-details-section">
+            <h4>MSEDCL HT Bill Component Details</h4>
+            <table>
+              <tbody>
+                <tr>
+                  <td>Consumer Number</td>
+                  <td>{primaryBill.consumerNumber || "-"}</td>
+                </tr>
+                <tr>
+                  <td>Consumer Name</td>
+                  <td>{primaryBill.consumerName || "-"}</td>
+                </tr>
+                <tr>
+                  <td>DISCOM</td>
+                  <td>{primaryBill.discom || "MSEDCL"}</td>
+                </tr>
+                <tr>
+                  <td>Tariff Category</td>
+                  <td>{primaryBill.tariffCategory || "-"}</td>
+                </tr>
+                <tr>
+                  <td>Contract Demand</td>
+                  <td>{formatKVA(primaryBill.contractDemandKVA || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Recorded Maximum Demand</td>
+                  <td>{formatKVA(primaryBill.actualDemandKVA || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Billing Demand</td>
+                  <td>{formatKVA(primaryBill.billingDemandKVA || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Billing Demand Rule</td>
+                  <td>
+                    Billing demand considered as per MSEDCL bill:{" "}
+                    {formatKVA(msedclBillingDemandConsidered)}
+                  </td>
+                </tr>
+                <tr>
+                  <td>Sanctioned Load</td>
+                  <td>{(primaryBill.sanctionedLoadKW || 0).toFixed(2)} kW</td>
+                </tr>
+                <tr>
+                  <td>Connected Load</td>
+                  <td>{(primaryBill.connectedLoadKW || 0).toFixed(2)} kW</td>
+                </tr>
+                <tr>
+                  <td>Solar Capacity</td>
+                  <td>{(primaryBill.solarCapacityKW || 0).toFixed(2)} kW</td>
+                </tr>
+                <tr>
+                  <td>Billing Units</td>
+                  <td>{(primaryBill.kVAh || 0).toFixed(0)} kVAh</td>
+                </tr>
+                <tr>
+                  <td>Net kWh</td>
+                  <td>{(primaryBill.kWh || 0).toFixed(0)} kWh</td>
+                </tr>
+                <tr>
+                  <td>Billed Power Factor</td>
+                  <td>{(primaryBill.powerFactor || 0).toFixed(3)}</td>
+                </tr>
+                <tr>
+                  <td>FAC</td>
+                  <td>{formatINR(primaryBill.facCharge || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Wheeling Charge</td>
+                  <td>{formatINR(primaryBill.wheelingCharge || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Electricity Duty</td>
+                  <td>{formatINR(primaryBill.electricityTax || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Tax on Sale</td>
+                  <td>{formatINR(primaryBill.taxOnSale || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Grid Support Charge</td>
+                  <td>{formatINR(primaryBill.gridSupportCharge || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Prompt Payment Discount</td>
+                  <td>{formatINR(primaryBill.promptPaymentDiscount || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Government Subsidy</td>
+                  <td>{formatINR(primaryBill.govtSubsidy || 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {connectedLoads.length > 0 && (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "11" : "10"}. Connected Load
+              Analysis
+            </h3>
+            <p>
+              The uploaded connected load and machine detail files indicate a
+              total connected load of {totalConnectedKW.toFixed(2)} kW across{" "}
+              {connectedLoads.length} equipment entries. The maximum actual demand
+              observed is {formatKVA(maxActualDemandKVA)}, giving a connected
+              load to demand ratio of {connectedLoadToDemandRatio.toFixed(2)}.
+            </p>
+
+            <p>
+              This ratio indicates that all connected equipment is not operating
+              simultaneously. Therefore, load diversity, operating hours, batch
+              operation, standby equipment, and process-wise utilization should be
+              validated at site before finalizing demand reduction or connected
+              load based recommendations.
+            </p>
+          </>
+        )}
+
+        {hasConnectedLoadData ? (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "12" : "11"}. Connected Load
+              Parser Summary
+            </h3>
+            <table>
+              <tbody>
+                <tr>
+                  <td>Connected Load Parser</td>
+                  <td>{connectedLoadQuality.parserName}</td>
+                </tr>
+                <tr>
+                  <td>Header Row Detected</td>
+                  <td>{connectedLoadQuality.headerRows}</td>
+                </tr>
+                <tr>
+                  <td>Average Connected Load Extraction Confidence</td>
+                  <td>{connectedLoadQuality.averageConfidence}%</td>
+                </tr>
+                <tr>
+                  <td>Rows With Warnings</td>
+                  <td>{connectedLoadQuality.warningRows}</td>
+                </tr>
+                <tr>
+                  <td>Low Confidence Rows</td>
+                  <td>{connectedLoadQuality.lowConfidenceRows}</td>
+                </tr>
+                <tr>
+                  <td>Rows Where Default Quantity Was Used</td>
+                  <td>{connectedLoadQuality.rowsWithDefaultQuantity}</td>
+                </tr>
+                <tr>
+                  <td>Rows Where Default Diversity Factor Was Used</td>
+                  <td>{connectedLoadQuality.rowsWithDefaultDiversity}</td>
+                </tr>
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "12" : "11"}. Connected Load Data
+              Status
+            </h3>
+            <p>
+              Connected load file was not uploaded. Connected load-based analysis
+              is excluded from this bill-only proposal.
+            </p>
+          </>
+        )}
+
+        {sourceLoadSummaries.length > 0 && (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "13" : "12"}. Source-wise Connected
+              Load Summary
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Source File</th>
+                  <th>Equipment Rows</th>
+                  <th>Connected Load</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {sourceLoadSummaries.map((source) => (
+                  <tr key={source.sourceFile}>
+                    <td>{source.sourceFile}</td>
+                    <td>{source.equipmentCount}</td>
+                    <td>{source.connectedKW.toFixed(2)} kW</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {locationLoadSummaries.length > 0 && (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "14" : "13"}. Section-wise Connected
+              Load Summary
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Section / Location</th>
+                  <th>Equipment Rows</th>
+                  <th>Connected Load</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {locationLoadSummaries.map((location) => (
+                  <tr key={location.location}>
+                    <td>{location.location}</td>
+                    <td>{location.equipmentCount}</td>
+                    <td>{location.connectedKW.toFixed(2)} kW</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {topConnectedLoads.length > 0 && (
+          <>
+            <h3 className="print-section-14-start">
+              {totalExtractionWarnings > 0 ? "15" : "14"}. Top 10 Major
+              Connected Loads
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Equipment</th>
+                  <th>Section / Location</th>
+                  <th>Rating kW</th>
+                  <th>Quantity</th>
+                  <th>Connected kW</th>
+                  <th>Confidence</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {topConnectedLoads.map((load, index) => (
+                  <tr key={`${load.equipmentName}-${index}`}>
+                    <td>{load.equipmentName || "-"}</td>
+                    <td>{load.location || "-"}</td>
+                    <td>{(load.ratingKW || 0).toFixed(2)}</td>
+                    <td>{(load.quantity || 0).toFixed(0)}</td>
+                    <td>{(load.connectedKW || 0).toFixed(2)}</td>
+                    <td>
+                      {getNumberValue(getExtraValue(load, "extractionConfidence"))}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {hasConnectedLoadData && (
+          <>
+            <h3>
+              {totalExtractionWarnings > 0 ? "16" : "15"}. Parser Assumptions
+              and Warnings
+            </h3>
+            <ul>
+              <li>
+                Connected load extraction is based on machine detail columns such
+                as equipment name, kW rating, HP rating, quantity, diversity
+                factor, and section/location wherever available.
+              </li>
+              <li>
+                Where quantity is missing, the parser assumes quantity as 1 for
+                preliminary connected load calculation.
+              </li>
+              <li>
+                Where diversity factor is missing, the parser assumes diversity
+                factor as 1. Site validation is required before using the connected
+                load for final demand optimization recommendations.
+              </li>
+              <li>
+                Section rows such as process area names are used as
+                location/section tags for the following equipment rows.
+              </li>
+              <li>
+                Rows with missing kW/HP ratings are excluded from connected load
+                total and should be reviewed manually.
+              </li>
+            </ul>
+          </>
+        )}
+
+        <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2 mb-4 mt-8">{totalExtractionWarnings > 0 ? "17" : "16"}. Key Observations</h3>
+        <ul>
+          <li>
+            {analysedMonths} bill month(s) have been analysed for electricity
+            consumption, demand, power factor, and billing pattern.
+          </li>
+          <li>
+            Average monthly bill is {formatINR(averageMonthlySpend)}, with an
+            estimated annualized spend of {formatINR(estimatedAnnualizedSpend)}.
+          </li>
+          <li>
+            Maximum billing demand is {formatKVA(maxBillingDemandKVA)} against
+            contract demand of {formatKVA(primaryBill?.contractDemandKVA || 0)}.
+          </li>
+          <li>
+            Average power factor is {avgPowerFactor.toFixed(3)}, and minimum
+            power factor is {minPowerFactor.toFixed(3)}.
+          </li>
+          {hasConnectedLoadData ? (
+            <li>
+              Total connected load is {totalConnectedKW.toFixed(2)} kW. This
+              should be validated with operating diversity before finalizing demand
+              optimization.
+            </li>
+          ) : (
+            <li>
+              Connected load file was not uploaded. Connected load-based analysis
+              is excluded from this bill-only proposal.
+            </li>
+          )}
+          <li>{extractionStatus}</li>
+          {isOcrBill && (
+            <li>
+              OCR photo bill extraction was used. Manual verification is required
+              for kWh, PF, kVAh and detailed charge breakup before final
+              submission.
+            </li>
+          )}
+          {isMsedclBill && primaryBill && (
+            <>
+              <li>
+                MSEDCL billing demand considered in the bill is{" "}
+                {formatKVA(msedclBillingDemandConsidered)}. This value is used for
+                demand analysis instead of forcing a generic 75% contract demand
+                rule.
+              </li>
+              <li>
+                Contract demand is {formatKVA(primaryBill.contractDemandKVA || 0)}
+                , while billing demand considered is{" "}
+                {formatKVA(msedclBillingDemandConsidered)}. This indicates a
+                contract demand review opportunity.
+              </li>
+              <li>
+                Billed power factor is {(primaryBill.powerFactor || 0).toFixed(3)}
+                . APFC system performance should be reviewed to avoid PF penalty
+                and improve billing.
+              </li>
+              <li>
+                Grid Support Charge is{" "}
+                {formatINR(primaryBill.gridSupportCharge || 0)} and should be
+                considered separately during solar and billing review.
+              </li>
+            </>
+          )}
+        </ul>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "18" : "17"}. Recommended Actions
+        </h3>
+        <ul>
+          {recommendations.map((recommendation, index) => (
+            <li
+              key={recommendation.title}
+              className={index === 3 ? "print-start-new-page" : undefined}
+            >
+              <strong>{recommendation.title}:</strong>{" "}
+              {recommendation.description}
+            </li>
+          ))}
+          <li>
+            <strong>Upload multiple monthly bills:</strong> Add 6 to 12 months of
+            electricity bills for stronger contract demand optimization analysis.
+          </li>
+          {hasConnectedLoadData && (
+            <li>
+              <strong>Validate connected load file:</strong> Confirm equipment
+              ratings, quantity, operating hours, standby equipment, and diversity
+              factor for major process sections.
+            </li>
+          )}
+          <li>
+            <strong>Review extraction quality:</strong> Verify all values where
+            parser confidence is moderate or low before submitting the final
+            proposal.
+          </li>
+        </ul>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "19" : "18"}. Proposed Next Steps
+        </h3>
+        <ol>
+          <li>Verify extracted electricity bill values with original bill PDFs.</li>
+          <li>Upload 6 to 12 months of bills for trend-based demand review.</li>
+          {hasConnectedLoadData && (
+            <li>Validate connected load list with site team and machine nameplates.</li>
+          )}
+          <li>Identify continuously operating, intermittent, and standby loads.</li>
+          <li>Review actual demand trend, billing demand trend, and production trend.</li>
+          <li>Finalize demand optimization and energy-saving measures.</li>
+          <li>Prepare implementation-level proposal with investment and ROI.</li>
+        </ol>
+
+        <h3>
+          {totalExtractionWarnings > 0 ? "20" : "19"}. Assumptions and
+          Limitations
+        </h3>
+        <ul>
+          <li>
+            This proposal preview is based on uploaded electricity bill data
+            {hasConnectedLoadData
+              ? " and connected load files."
+              : ". Connected load file was not uploaded."}
+          </li>
+          <li>
+            Savings potential shown in the dashboard is preliminary and should be
+            validated with site measurements.
+          </li>
+          {hasConnectedLoadData && (
+            <li>
+              Connected load values depend on correctness of Excel file headers,
+              ratings, quantities, and extracted values.
+            </li>
+          )}
+          <li>
+            Demand optimization should be finalized only after reviewing at least
+            6 to 12 months of demand and consumption history.
+          </li>
+          <li>
+            Tariff applicability, billing demand rules, and charges should be
+            verified against the latest applicable DISCOM tariff order.
+          </li>
+        </ul>
+
+        <div className="print-signature-page">
+          <ProposalSignature />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default App;

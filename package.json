@@ -5,13 +5,17 @@
   "workspaces": [
     "apps/*",
     "adiabatic-cooler-quotation/backend",
-    "adiabatic-cooler-quotation/frontend"
+    "adiabatic-cooler-quotation/frontend",
+    "electricity-bill-proposal-generator/frontend",
+    "electricity-bill-proposal-generator/backend"
   ],
   "scripts": {
     "dev:backend": "npm run start:dev --workspace=apps/backend",
     "dev:frontend": "npm run dev --workspace=apps/frontend",
     "dev:adiabatic-backend": "npm run dev --workspace=adiabatic-cooler-quotation-backend",
     "dev:adiabatic-frontend": "npm run dev --workspace=adiabatic-cooler-quotation-frontend",
+    "dev:electricity-frontend": "npm run dev --workspace=electricity-bill-frontend",
+    "dev:electricity-backend": "npm run dev --workspace=electricity-bill-backend",
     "build:backend": "npm run build --workspace=apps/backend",
     "build:frontend": "npm run build --workspace=apps/frontend"
   },

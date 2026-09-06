@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Calculator, Users, Settings, LogOut, 
-  Snowflake, Eye, FileText, FileSpreadsheet, IndianRupee, Percent 
+  Snowflake, Eye, FileText, FileSpreadsheet, IndianRupee, Percent, SlidersHorizontal, Download 
 } from 'lucide-react';
 import './adiabatic.css';
 
@@ -465,92 +465,161 @@ export default function AdiabaticCooler({ apiBase, mode }: AdiabaticCoolerProps)
     <div className="adiabatic-theme w-full">
       {/* VIEW A: DASHBOARD */}
       {mode === 'dashboard' && (
-        <section className="animate-fade">
-          <div className="metrics-grid">
-            <div className="metric-card">
-              <div className="metric-icon" style={{ backgroundColor: 'rgba(56, 95, 168, 0.1)', color: '#385FA8' }}><FileSpreadsheet size={24} /></div>
-              <div className="metric-info">
-                <div className="metric-title">Chiller Quotes This Month</div>
-                <div className="metric-value">{quotesThisMonth}</div>
+        <section className="animate-fade space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Chiller Quotes This Month</span>
+                <div className="text-2xl font-extrabold text-slate-900">{quotesThisMonth}</div>
+                <span className="text-[10px] text-slate-450 block font-medium">vs last month</span>
+              </div>
+              <div className="p-3 rounded-xl border border-blue-100 bg-blue-50 text-blue-600 flex-shrink-0">
+                <FileSpreadsheet className="h-5 w-5" />
               </div>
             </div>
-            <div className="metric-card">
-              <div className="metric-icon" style={{ backgroundColor: 'rgba(80, 184, 64, 0.1)', color: '#50B840' }}><IndianRupee size={24} /></div>
-              <div className="metric-info">
-                <div className="metric-title">Chiller Value This Month</div>
-                <div className="metric-value">₹{totalValueThisMonth.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Chiller Value This Month</span>
+                <div className="text-2xl font-extrabold text-slate-900">₹{totalValueThisMonth.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+                <span className="text-[10px] text-slate-450 block font-medium">vs last month</span>
+              </div>
+              <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600 flex-shrink-0">
+                <IndianRupee className="h-5 w-5" />
               </div>
             </div>
-            <div className="metric-card">
-              <div className="metric-icon" style={{ backgroundColor: 'rgba(77, 77, 77, 0.1)', color: '#4D4D4D' }}><Percent size={24} /></div>
-              <div className="metric-info">
-                <div className="metric-title">Active Chiller Rate Card</div>
-                <div className="metric-value" style={{ fontSize: '1rem' }}>{activeRateCard ? activeRateCard.versionLabel : 'N/A'}</div>
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between shadow-sm">
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Chiller Rate Card</span>
+                <div className="text-2xl font-extrabold text-slate-900">{activeRateCard ? activeRateCard.versionLabel : 'N/A'}</div>
+                <span className="text-[10px] text-slate-450 block font-medium">System config</span>
+              </div>
+              <div className="p-3 rounded-xl border border-slate-100 bg-slate-50 text-slate-600 flex-shrink-0">
+                <Percent className="h-5 w-5" />
               </div>
             </div>
           </div>
 
-          <div className="table-container">
-            <div className="table-header-bar flex flex-col md:flex-row gap-3">
-              <h2 className="font-bold text-slate-800 text-sm">Recent Chiller Estimates</h2>
-              <div className="flex-1 flex gap-2 w-full md:w-auto">
-                <input type="text" className="search-box flex-1" placeholder="Search customer..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <select className="search-box text-xs" style={{ minWidth: '120px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <div className="text-xs font-bold text-slate-450 uppercase tracking-wider mr-2">Recent Chiller Estimates</div>
+              <input 
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search customer..."
+                className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-400 focus:bg-white w-full sm:w-60 shadow-inner"
+              />
+              <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Status</span>
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer pr-1"
+                >
                   <option value="all">All Statuses</option>
                   <option value="draft">Draft</option>
                   <option value="final">Final</option>
                 </select>
-                <select className="search-box text-xs" style={{ minWidth: '120px' }} value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+              </div>
+              <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Time</span>
+                <select
+                  value={dateFilter}
+                  onChange={e => setDateFilter(e.target.value)}
+                  className="bg-transparent text-xs font-semibold text-slate-700 outline-none cursor-pointer pr-1"
+                >
                   <option value="all">All Time</option>
                   <option value="this-month">This Month</option>
                 </select>
               </div>
             </div>
-            <table className="app-table">
-              <thead>
-                <tr>
-                  <th>Quote ID</th>
-                  <th>Date</th>
-                  <th>Customer Name</th>
-                  <th>Config Type</th>
-                  <th>Status</th>
-                  <th>Est. Total</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredQuotations.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No chiller quotations match your filters.</td></tr>
-                ) : (
-                  filteredQuotations.map(q => (
-                    <tr key={q.id}>
-                      <td style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>Q-{q.id}</td>
-                      <td>{new Date(q.created_at).toLocaleDateString()}</td>
-                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{q.customer_name}</td>
-                      <td style={{ fontSize: '0.85rem' }}>{q.inputSnapshot?.faceSelectionType} ({(q.inputSnapshot?.faces || []).join(', ')})</td>
-                      <td>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          q.status === 'final' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'
-                        }`}>
-                          {q.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: 'var(--success)' }}>₹{(q.outputSnapshot?.grandTotal || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</td>
-                      <td>
-                        <div className="flex gap-2">
-                          <button className="bg-slate-100 hover:bg-slate-200 text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-semibold" onClick={() => handleOpenQuoteDetails(q.id)}>
-                            <Eye size={13} /> View
-                          </button>
-                          <button className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-semibold" onClick={() => handleDownloadPdf(q.id)}>
-                            <FileText size={13} /> PDF
-                          </button>
-                        </div>
+            <div className="flex items-center space-x-3 w-full lg:w-auto justify-end">
+              <button 
+                onClick={() => { setSearchQuery(''); setStatusFilter('all'); setDateFilter('all'); }}
+                className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 shadow-sm transition-colors"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 text-slate-400" />
+                <span>Reset Filters</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-slate-200">
+                    <th className="px-6 py-4">Quote ID</th>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Customer Name</th>
+                    <th className="px-6 py-4">Config Type</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Est. Total</th>
+                    <th className="px-6 py-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm">
+                  {filteredQuotations.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                        No chiller quotations match your filters.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    filteredQuotations.map(q => (
+                      <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className="text-blue-600 bg-blue-50 font-semibold px-2.5 py-1 rounded-lg text-xs border border-blue-100">
+                            Q-{q.id}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600 font-medium text-xs">
+                          {new Date(q.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-800">{q.customer_name}</div>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-slate-600 font-medium">
+                          {q.inputSnapshot?.faceSelectionType} ({(q.inputSnapshot?.faces || []).join(', ')})
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                            q.status === 'final' 
+                              ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {q.status === 'final' ? 'Final' : 'Draft'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-slate-800">
+                            ₹{(q.outputSnapshot?.grandTotal || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center space-x-2.5">
+                            <button 
+                              onClick={() => handleOpenQuoteDetails(q.id)}
+                              className="text-slate-400 hover:text-indigo-600 transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDownloadPdf(q.id)}
+                              className="text-slate-400 hover:text-indigo-600 transition-colors"
+                              title="Download PDF"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       )}

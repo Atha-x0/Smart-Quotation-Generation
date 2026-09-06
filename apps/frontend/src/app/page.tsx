@@ -25,10 +25,11 @@ import {
   MapPin, Phone, Tag, DollarSign, ChevronRight, X, ArrowLeft, RefreshCw, Save, CheckCircle, Wifi, WifiOff, Bold, Italic, List, ListOrdered, FileSpreadsheet, Download, SlidersHorizontal, ArrowUpDown, ChevronDown, Check, Menu, Bell, HelpCircle, FileCheck2, AlertCircle
 } from 'lucide-react';
 import AdiabaticCooler from './AdiabaticCooler';
+import ElectricityBillApp from './electricity-bill/ElectricityBillApp';
 
 const host = typeof window !== 'undefined'
   ? window.location.hostname
-  : 'localhost';
+  : '127.0.0.1';
 const API_BASE = `http://${host}:5000/api`;
 const ADIABATIC_API_BASE = `${API_BASE}/adiabatic`;
 
@@ -351,7 +352,7 @@ export default function SmartQuotationSystem() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeSidebarItem, setActiveSidebarItem] = useState('Quotations');
-  const [dashboardTab, setDashboardTab] = useState<'standard' | 'chiller'>('standard');
+  const [dashboardTab, setDashboardTab] = useState<'standard' | 'chiller' | 'electricity'>('standard');
   const [chillerMode, setChillerMode] = useState<'dashboard' | 'survey' | 'customers' | 'settings'>('dashboard');
   
   // Diff target selection
@@ -1363,6 +1364,14 @@ export default function SmartQuotationSystem() {
                     >
                       Chiller Estimates
                     </button>
+                    <button
+                      onClick={() => {
+                        setDashboardTab('electricity');
+                      }}
+                      className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'electricity' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Electricity Bill
+                    </button>
                   </div>
 
                   {dashboardTab === 'chiller' && chillerMode === 'survey' && (
@@ -1379,6 +1388,8 @@ export default function SmartQuotationSystem() {
 
                   {dashboardTab === 'chiller' ? (
                     <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode={chillerMode} />
+                  ) : dashboardTab === 'electricity' ? (
+                    <ElectricityBillApp />
                   ) : (
                     <>
                       {/* Stats Cards */}
@@ -1524,6 +1535,12 @@ export default function SmartQuotationSystem() {
                       >
                         Chiller Estimates
                       </button>
+                      <button
+                        onClick={() => setDashboardTab('electricity')}
+                        className={`px-5 py-2 text-xs font-bold rounded-lg transition-all ${dashboardTab === 'electricity' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        Electricity Bill
+                      </button>
                     </div>
 
                     {dashboardTab === 'chiller' && (
@@ -1542,6 +1559,8 @@ export default function SmartQuotationSystem() {
 
                   {dashboardTab === 'chiller' ? (
                     <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="dashboard" />
+                  ) : dashboardTab === 'electricity' ? (
+                    <ElectricityBillApp />
                   ) : (
                     <>
                   {/* Statistics Cards */}
@@ -1710,6 +1729,8 @@ export default function SmartQuotationSystem() {
 
                   {dashboardTab === 'chiller' ? (
                     <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="customers" />
+                  ) : dashboardTab === 'electricity' ? (
+                    <ElectricityBillApp />
                   ) : (
                     <>
                   {/* Dynamic stats */}
@@ -2072,6 +2093,8 @@ export default function SmartQuotationSystem() {
 
                   {dashboardTab === 'chiller' ? (
                     <AdiabaticCooler apiBase={ADIABATIC_API_BASE} mode="settings" />
+                  ) : dashboardTab === 'electricity' ? (
+                    <ElectricityBillApp />
                   ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   {/* Preferences Card */}
@@ -2333,13 +2356,13 @@ export default function SmartQuotationSystem() {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-150">
-                        <th className="p-3 w-1/3">Item Name & Description</th>
-                        <th className="p-3 w-1/6">HSN/SAC</th>
+                        <th className="p-3 w-2/5">Item Name & Description</th>
+                        <th className="p-3 w-28">HSN/SAC</th>
                         <th className="p-3 text-center">Qty</th>
                         <th className="p-3 text-right">Rate (₹)</th>
                         <th className="p-3 text-right">Discount (₹)</th>
                         <th className="p-3 text-right">Total (₹)</th>
-                        <th className="p-3 text-center">Action</th>
+                        <th className="p-3 text-center w-16">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-150">
@@ -2351,29 +2374,31 @@ export default function SmartQuotationSystem() {
 
                         return (
                           <tr key={field.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 space-y-2">
-                              <input
-                                type="text"
-                                {...register(`items.${idx}.item_name`, {
-                                  onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
-                                })}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:border-blue-400 outline-none text-slate-800 font-semibold shadow-inner"
-                                placeholder="Item name"
-                              />
-                              <textarea
-                                rows={1}
-                                {...register(`items.${idx}.description`, {
-                                  onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
-                                })}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1 focus:border-blue-400 outline-none text-slate-400 text-[10px] shadow-inner"
-                                placeholder="Description (optional)"
-                              />
+                            <td className="p-3">
+                              <div className="flex flex-col gap-2">
+                                <input
+                                  type="text"
+                                  {...register(`items.${idx}.item_name`, {
+                                    onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
+                                  })}
+                                  className="w-full min-w-[250px] bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:border-blue-400 outline-none text-slate-800 text-sm shadow-inner"
+                                  placeholder="Item name"
+                                />
+                                <textarea
+                                  rows={1}
+                                  {...register(`items.${idx}.description`, {
+                                    onChange: (e) => handleItemDescriptionChange(idx, e.target.value)
+                                  })}
+                                  className="w-full min-w-[250px] bg-white border border-slate-200 rounded-lg px-3 py-1 focus:border-blue-400 outline-none text-slate-400 text-[10px] shadow-inner resize-y"
+                                  placeholder="Description (optional)"
+                                />
+                              </div>
                             </td>
                             <td className="p-3">
                               <input
                                 type="text"
                                 {...register(`items.${idx}.hsn_sac_code`)}
-                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-slate-800 text-center font-mono shadow-inner"
+                                className="w-full min-w-[100px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-slate-800 text-center font-mono shadow-inner"
                                 placeholder="HSN/SAC"
                               />
                             </td>
@@ -2381,7 +2406,7 @@ export default function SmartQuotationSystem() {
                               <input
                                 type="number"
                                 {...register(`items.${idx}.quantity`, { valueAsNumber: true })}
-                                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-center text-slate-800 shadow-inner"
+                                className="w-20 min-w-[80px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-center text-slate-800 shadow-inner"
                               />
                             </td>
                             <td className="p-3 text-right">
@@ -2389,7 +2414,7 @@ export default function SmartQuotationSystem() {
                                 type="number"
                                 step="0.01"
                                 {...register(`items.${idx}.rate`, { valueAsNumber: true })}
-                                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-right text-slate-800 shadow-inner"
+                                className="w-28 min-w-[110px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-right text-slate-800 shadow-inner"
                               />
                             </td>
                             <td className="p-3 text-right">
@@ -2397,7 +2422,7 @@ export default function SmartQuotationSystem() {
                                 type="number"
                                 step="0.01"
                                 {...register(`items.${idx}.discount`, { valueAsNumber: true })}
-                                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-right text-slate-800 shadow-inner"
+                                className="w-24 min-w-[90px] bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:border-blue-400 outline-none text-right text-slate-800 shadow-inner"
                               />
                             </td>
                             <td className="p-3 text-right font-bold text-slate-800">
@@ -2448,30 +2473,34 @@ export default function SmartQuotationSystem() {
 
                 <div className="space-y-3">
                   {termsList.map((clause, idx) => (
-                    <div key={idx} className="flex items-start space-x-3 p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-150 rounded-xl transition-all shadow-sm">
-                      <input
-                        type="checkbox"
-                        checked={clause.selected}
-                        onChange={() => toggleTerm(idx)}
-                        className="mt-1 h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
-                      />
-                      <div className="flex-1">
+                    <div key={idx} className="flex items-start space-x-3 p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-xl transition-all shadow-sm w-full">
+                      <div className="flex-none pt-1">
+                        <input
+                          type="checkbox"
+                          checked={clause.selected}
+                          onChange={() => toggleTerm(idx)}
+                          className="h-4 w-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
                         <textarea
                           rows={2}
                           value={clause.text}
                           onChange={(e) => updateTermText(idx, e.target.value)}
-                          className="w-full bg-transparent border-none outline-none focus:ring-0 text-slate-700 text-xs resize-none py-0.5 leading-normal"
+                          className="w-full bg-white border border-slate-200 focus:border-blue-400 focus:ring-blue-400/20 rounded-md text-slate-700 text-sm resize-y p-2.5 leading-normal shadow-sm"
                           placeholder="Enter terms and conditions clause..."
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => deleteTerm(idx)}
-                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                        title="Delete Clause"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex-none pt-1">
+                        <button
+                          type="button"
+                          onClick={() => deleteTerm(idx)}
+                          className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                          title="Delete Clause"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   

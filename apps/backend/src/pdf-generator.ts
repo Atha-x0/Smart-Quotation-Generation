@@ -18,7 +18,11 @@ const ICONS = {
   mapPin: 'M8 0C3.58 0 0 3.58 0 8c0 5.25 8 16 8 16s8-10.75 8-16c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z',
   phone: 'M3.62 1.03c.53.53.94 1.18 1.25 1.86.13.29.07.63-.15.86l-.86.86c.64 1.37 1.76 2.49 3.13 3.13l.86-.86c.23-.23.57-.28.86-.15.68.31 1.33.72 1.86 1.25.39.39.41 1.02.05 1.43l-1.3 1.3c-.56.56-1.46.67-2.14.28-2.61-1.48-4.73-3.6-6.21-6.21-.39-.68-.28-1.58.28-2.14l1.3-1.3c.41-.36 1.04-.34 1.43.05z',
   envelope: 'M0 2a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H2a2 2 0 01-2-2V2zm2 1.6V14h12V3.6L8 8.4 2 3.6zM8 6.6L13.8 2H2.2L8 6.6z',
-  globe: 'M8 0a8 8 0 100 16A8 8 0 008 0zm0 1.5c1.17 0 2.26.33 3.19.89L9.61 4H6.39L4.81 2.39A6.47 6.47 0 018 1.5zM3.46 3.13L5.04 5h5.92l1.58-1.87A6.45 6.45 0 0114.27 8h-2.18c-.28-1.78-1.07-3.32-2.19-4.43A6.46 6.46 0 0113.1 6.5h-1.57a4.97 4.97 0 00-.73-2.19c-.43.76-.94 1.45-1.5 2.05L8.5 7.17v5.66l.8-1.2c.56.6 1.07 1.29 1.5 2.05.3-.65.55-1.38.73-2.19h1.57a6.46 6.46 0 01-3.26 3.16c1.12-1.11 1.91-2.65 2.19-4.43h2.18a6.45 6.45 0 01-1.68 3.51M8.5 1.52v5.15L9.19 6h-2.38L7.5 6.67v5.66L6.81 10h2.38L8.5 1.52zm-.69 11.31l-.8 1.2a4.97 4.97 0 00-.73-2.19c-.43.76-.94 1.45-1.5 2.05L3.46 12.87a6.45 6.45 0 011.68-3.51h2.18c.28 1.78 1.07 3.32 2.19 4.43a6.46 6.46 0 01-3.26-3.16h-1.57c.18.81.43 1.54.73 2.19-.56-.6-1.07-1.29-1.5-2.05l-.8 1.2v-.01z'
+  globe: 'M8 0a8 8 0 100 16A8 8 0 008 0zm0 1.5c1.17 0 2.26.33 3.19.89L9.61 4H6.39L4.81 2.39A6.47 6.47 0 018 1.5zM3.46 3.13L5.04 5h5.92l1.58-1.87A6.45 6.45 0 0114.27 8h-2.18c-.28-1.78-1.07-3.32-2.19-4.43A6.46 6.46 0 0113.1 6.5h-1.57a4.97 4.97 0 00-.73-2.19c-.43.76-.94 1.45-1.5 2.05L8.5 7.17v5.66l.8-1.2c.56.6 1.07 1.29 1.5 2.05.3-.65.55-1.38.73-2.19h1.57a6.46 6.46 0 01-3.26 3.16c1.12-1.11 1.91-2.65 2.19-4.43h2.18a6.45 6.45 0 01-1.68 3.51M8.5 1.52v5.15L9.19 6h-2.38L7.5 6.67v5.66L6.81 10h2.38L8.5 1.52zm-.69 11.31l-.8 1.2a4.97 4.97 0 00-.73-2.19c-.43.76-.94 1.45-1.5 2.05L3.46 12.87a6.45 6.45 0 011.68-3.51h2.18c.28 1.78 1.07 3.32 2.19 4.43a6.46 6.46 0 01-3.26-3.16h-1.57c.18.81.43 1.54.73 2.19-.56-.6-1.07-1.29-1.5-2.05l-.8 1.2v-.01z',
+  cog: 'M8 6 C6.9 6 6 6.9 6 8 C6 9.1 6.9 10 8 10 C9.1 10 10 9.1 10 8 C10 6.9 9.1 6 8 6 Z M8 1 C7.5 1 7.1 1.3 7 1.8 L6.7 3 C6.1 3.2 5.6 3.5 5.1 3.9 L4 3.1 C3.6 2.8 3.1 2.9 2.8 3.3 L1.3 5.9 C1.1 6.3 1.2 6.8 1.6 7.1 L2.6 7.9 C2.5 8.2 2.5 8.5 2.6 8.8 L1.6 9.6 C1.2 9.9 1.1 10.4 1.3 10.8 L2.8 13.4 C3.1 13.8 3.6 13.9 4.0 13.6 L5.1 12.8 C5.6 13.2 6.1 13.5 6.7 13.7 L7.0 14.9 C7.1 15.4 7.5 15.7 8.0 15.7 C8.5 15.7 8.9 15.4 9.0 14.9 L9.3 13.7 C9.9 13.5 10.4 13.2 10.9 12.8 L12.0 13.6 C12.4 13.9 12.9 13.8 13.2 13.4 L14.7 10.8 C14.9 10.4 14.8 9.9 14.4 9.6 L13.4 8.8 C13.5 8.5 13.5 8.2 13.4 7.9 L14.4 7.1 C14.8 6.8 14.9 6.3 14.7 5.9 L13.2 3.3 C12.9 2.9 12.4 2.8 12.0 3.1 L10.9 3.9 C10.4 3.5 9.9 3.2 9.3 3.0 L9.0 1.8 C8.9 1.3 8.5 1 8.0 1 Z',
+  droplet: 'M8 0 C8 0 2 6 2 10.5 C2 13.5 4.7 16 8 16 C11.3 16 14 13.5 14 10.5 C14 6 8 0 8 0 Z',
+  grid: 'M1 1 H3 V3 H1 Z M6 1 H8 V3 H6 Z M11 1 H13 V3 H11 Z M1 6 H3 V8 H1 Z M6 6 H8 V8 H6 Z M11 6 H13 V8 H11 Z M1 11 H3 V13 H1 Z M6 11 H8 V13 H6 Z M11 11 H13 V13 H11 Z',
+  box: 'M1 4 L8 1 L15 4 L15 12 L8 15 L1 12 Z M8 1.5 L14 3.8 L8 6.1 L2 3.8 Z M8 6.8 L14 4.5 L14 11.2 L8 13.9 Z M2 4.5 L8 6.8 L8 13.9 L2 11.2 Z'
 };
 
 function cleanHtmlText(html: string): string {
@@ -202,6 +206,11 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       currentY += 10;
     };
 
+    doc.on('pageAdded', () => {
+      currentY = 40;
+      drawHeader();
+    });
+
     drawHeader();
 
     // Client Details Section
@@ -210,10 +219,13 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       
       const contactParts = (quote.client_contact || '').split(' | ');
       const contactName = contactParts[0] || '';
+      const contactPhone = contactParts[1] || '';
 
       drawFieldWithUnderline('Client Name', quote.client_name || '', leftMargin, clientY, 110, 405);
       clientY += 14;
-      drawFieldWithUnderline('Contact Person', contactName, leftMargin, clientY, 110, 405);
+      drawFieldWithUnderline('Contact Person', contactName || 'N/A', leftMargin, clientY, 110, 405);
+      clientY += 14;
+      drawFieldWithUnderline('Contact Number', contactPhone || 'N/A', leftMargin, clientY, 110, 405);
       clientY += 14;
       drawFieldWithUnderline('Client Address', quote.client_address || '', leftMargin, clientY, 110, 405);
       clientY += 14;
@@ -310,8 +322,8 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
         });
 
         doc.addPage();
-        rowY = 40;
-        localTableTop = 40;
+        rowY = currentY;
+        localTableTop = currentY;
 
         // Draw header box on new page
         doc.rect(leftMargin, rowY, contentWidth, headerHeight).fill('#F2F2F2');
@@ -368,7 +380,6 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
     // Check space for totals box
     if (currentY > 675) {
       doc.addPage();
-      currentY = 40;
     }
 
     const totalTaxableVal = Number(quote.taxable_amount || 0);
@@ -414,7 +425,6 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       // Check space
       if (currentY > 740) {
         doc.addPage();
-        currentY = 40;
       }
 
       doc.fillColor('#1A1A1A').font('Roboto-Bold').fontSize(9).text(title, leftMargin, currentY);
@@ -431,7 +441,6 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
           
           if (currentY + lineHeight > 780) {
             doc.addPage();
-            currentY = 40;
           }
           
           doc.fillColor('#333333').font('Roboto').fontSize(8.5).text(line.trim(), leftMargin, currentY, { 
@@ -456,19 +465,6 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
       renderContentBlock('Scope of Work:', cleanHtmlText(scopeBlock.content));
     }
 
-    // Always render Payment Terms section separately first
-    let paymentTermsText = 'Payment terms shall be as mentioned in the commercial summary of this quotation.';
-    if (paymentBlock) {
-      const rawPaymentText = cleanHtmlText(paymentBlock.content);
-      const paymentLines = rawPaymentText.split('\n')
-        .map(l => l.replace(/^[•\-\*\s]+/, '').replace(/^\d+[\.\)]\s*/, '').trim())
-        .filter(l => l.length > 0);
-      if (paymentLines.length > 0) {
-        paymentTermsText = paymentLines.map((line, idx) => paymentLines.length > 1 ? `${idx + 1}. ${line}` : line).join('\n\n');
-      }
-    }
-    renderContentBlock('Payment Terms:', paymentTermsText);
-
     if (termsBlock) {
       // Clean terms block content, filter out duplicate payment terms references, and convert bullets to sequential numbers
       const rawText = cleanHtmlText(termsBlock.content);
@@ -478,22 +474,116 @@ export function generateQuotePdf(quote: any, res: any = null, filePath: string |
         // Filter out any lines discussing payment terms to avoid duplication
         .filter(l => !l.toLowerCase().includes('payment terms') && !l.toLowerCase().includes('payment shall be'));
       
-      const numberedTermsText = lines.map((line, idx) => `${idx + 1}. ${line}`).join('\n\n');
+      const numberedTermsText = lines.map((line, idx) => `${idx + 1}. ${line}`).join('\n');
       renderContentBlock('Terms & Conditions:', numberedTermsText);
     }
+
+    // Always render Payment Terms section separately after
+    let paymentTermsText = 'Payment terms shall be as mentioned in the commercial summary of this quotation.';
+    if (paymentBlock) {
+      const rawPaymentText = cleanHtmlText(paymentBlock.content);
+      const paymentLines = rawPaymentText.split('\n')
+        .map(l => l.replace(/^[•\-\*\s]+/, '').replace(/^\d+[\.\)]\s*/, '').trim())
+        .filter(l => l.length > 0);
+      if (paymentLines.length > 0) {
+        paymentTermsText = paymentLines.map((line, idx) => paymentLines.length > 1 ? `${idx + 1}. ${line}` : line).join('\n');
+      }
+    }
+    renderContentBlock('Payment Terms:', paymentTermsText);
 
     if (specBlock) {
       renderContentBlock('Technical Specifications:', cleanHtmlText(specBlock.content));
     }
 
+    // 5. INTERNAL ENGINEERING MATERIALS LIST
+    const out = quote.outputSnapshot || (quote.output_snapshot_json ? JSON.parse(quote.output_snapshot_json) : null);
+    if (out) {
+      // Check if there is enough space on the current page for the materials list (approx 190 pt)
+      if (currentY + 190 > 780) {
+        doc.addPage();
+      } else {
+        currentY += 15;
+      }
+
+      const brandBlue = '#1b4c80';
+      const brandGreen = '#3ba846';
+      const lightBg = '#f8fafc';
+      const borderColor = '#cbd5e1';
+      const textColor = '#334155';
+
+      doc.fillColor(brandBlue).rect(50, currentY, 16, 16).fill();
+      drawIcon(doc, ICONS.cog, 52, currentY + 2, 12, '#ffffff');
+      doc.fillColor(brandBlue).font('Roboto-Bold').fontSize(11).text('INTERNAL ENGINEERING MATERIALS LIST', 72, currentY + 4);
+
+      const engBoxY = currentY + 22;
+      const engBoxHeight = 158;
+
+      // Main Box
+      doc.roundedRect(50, engBoxY, 495, engBoxHeight, 6).fill(lightBg).strokeColor(borderColor).lineWidth(1).stroke();
+
+      // Column 1
+      const col1X = 65;
+      const colTopY = engBoxY + 12;
+
+      // Subheader: Cooling Pads Details
+      drawIcon(doc, ICONS.grid, col1X, colTopY + 2, 10, brandGreen);
+      doc.fillColor(brandGreen).font('Roboto-Bold').fontSize(10).text('Cooling Pads Details:', col1X + 16, colTopY + 2);
+      
+      doc.fillColor(textColor).font('Roboto').fontSize(8.5);
+      doc.text(`• Total pads: ${out.pads ? out.pads.totalPads : 0} sheet(s)`, col1X, colTopY + 17);
+      doc.text(`• Details per selected face:`, col1X, colTopY + 27);
+
+      let padDetailY = colTopY + 37;
+      if (out.pads && out.pads.breakdown) {
+        out.pads.breakdown.forEach((fd: any) => {
+          doc.text(`  - ${fd.name}: ${fd.padsAcrossWidth}W x ${fd.padsAcrossHeight}H = ${fd.padsForFace} pads`, col1X, padDetailY);
+          padDetailY += 10;
+        });
+      }
+
+      // Subheader: Pumps & Plumbing Sizing
+      const pumpTopY = colTopY + 84;
+      drawIcon(doc, ICONS.droplet, col1X, pumpTopY + 2, 10, brandBlue);
+      doc.fillColor(brandBlue).font('Roboto-Bold').fontSize(10).text('Pumps & Plumbing Sizing:', col1X + 16, pumpTopY + 2);
+      
+      doc.fillColor(textColor).font('Roboto').fontSize(8.5);
+      doc.text(`• Flow required: ${out.pumpPlumbing ? out.pumpPlumbing.requiredFlowLPH.toFixed(2) : 0} LPH`, col1X, pumpTopY + 17);
+      doc.text(`• Selected Pump: ${out.pumpPlumbing && out.pumpPlumbing.selectedPump ? out.pumpPlumbing.selectedPump.modelName : 'N/A'}`, col1X, pumpTopY + 27);
+      doc.text(`  (Capacity: ${out.pumpPlumbing && out.pumpPlumbing.selectedPump ? out.pumpPlumbing.selectedPump.capacityLPH : 0} LPH)`, col1X, pumpTopY + 37);
+
+      // Dashed Vertical Separator Line
+      doc.save();
+      doc.moveTo(298, engBoxY + 10).lineTo(298, engBoxY + engBoxHeight - 10)
+         .strokeColor(borderColor).lineWidth(0.8).dash(3, { space: 3 }).stroke();
+      doc.restore();
+
+      // Column 2
+      const col2X = 315;
+      
+      // Subheader: Metal & Frame Work
+      drawIcon(doc, ICONS.box, col2X, colTopY + 2, 10, brandGreen);
+      doc.fillColor(brandGreen).font('Roboto-Bold').fontSize(10).text('Metal & Frame Work:', col2X + 16, colTopY + 2);
+
+      doc.fillColor(textColor).font('Roboto').fontSize(8.5);
+      doc.text(`• Outer frame bars: ${out.frame ? out.frame.barsNeeded : 0} pcs`, col2X, colTopY + 17);
+      doc.text(`  - Total Length: ${out.frame ? out.frame.totalLength.toFixed(0) : 0} mm`, col2X, colTopY + 27);
+      
+      doc.text(`• Patti (Vertical joints): ${out.patti ? out.patti.barsNeeded : 0} pcs`, col2X, colTopY + 41);
+      doc.text(`  - Patti posts count: ${out.patti ? out.patti.postsCount : 0} pcs`, col2X, colTopY + 51);
+      
+      doc.text(`• Plate sheets (bottom + sides): ${out.plates ? out.plates.sheetsNeeded : 0} pcs`, col2X, colTopY + 65);
+      doc.text(`  - Total Plate Area: ${out.plates ? out.plates.totalArea.toFixed(0) : 0} mm²`, col2X, colTopY + 75);
+
+      currentY = engBoxY + engBoxHeight + 15;
+    }
+
     // Add Thank you footer at the bottom of the last page
-    if (currentY > 765) {
+    if (currentY > 745) {
       doc.addPage();
-      currentY = 40;
     }
 
     // Push footer to bottom of current page
-    const footerY = 780;
+    const footerY = 760;
     doc.moveTo(leftMargin, footerY - 5).lineTo(595.28 - rightMargin, footerY - 5).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
 
     doc.fillColor('#1A1A1A').font('Roboto-Bold').fontSize(9).text('Thank you for your business!', leftMargin, footerY, { width: contentWidth, align: 'center' });
