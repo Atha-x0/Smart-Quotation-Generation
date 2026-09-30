@@ -64,6 +64,43 @@ def parse_csv_file(file_path: str) -> List[Dict[str, Any]]:
     bills = []
 
     for index, row in enumerate(rows):
+        consumer_name = to_text(
+            get_value(
+                row,
+                [
+                    "Consumer Name",
+                    "Company Name",
+                    "Client Name",
+                    "Name",
+                    "Customer Name",
+                ],
+            )
+        )
+
+        consumer_number = to_text(
+            get_value(
+                row,
+                [
+                    "Consumer No",
+                    "Consumer Number",
+                    "Account No",
+                    "Account Number",
+                    "Customer No",
+                ],
+            )
+        )
+
+        tariff_category = to_text(
+            get_value(
+                row,
+                [
+                    "Tariff",
+                    "Tariff Category",
+                    "Category",
+                ],
+            )
+        )
+
         month = (
             to_text(
                 get_value(
@@ -253,6 +290,9 @@ def parse_csv_file(file_path: str) -> List[Dict[str, Any]]:
 
         bill = {
             "month": month,
+            "consumerName": consumer_name,
+            "consumerNumber": consumer_number,
+            "tariffCategory": tariff_category,
             "contractDemandKVA": contract_demand_kva,
             "actualDemandKVA": actual_demand_kva,
             "billingDemandKVA": billing_demand_kva,

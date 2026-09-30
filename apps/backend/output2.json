@@ -1,0 +1,1 @@
+{"status":"completed","bills":[],"connectedLoads":[],"fileResults":[{"fileName":"test.pdf","fileType":"BILL_FILE","status":"failed","rowsExtracted":0,"message":"No usable bill data could be extracted from this file."}],"summary":{"totalFiles":1,"billRows":0,"connectedLoadRows":0,"successfulFiles":0,"failedFiles":1}}

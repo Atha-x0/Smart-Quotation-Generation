@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 from PIL import Image, ImageEnhance, ImageFilter
 from pypdf import PdfReader
 
@@ -164,40 +165,10 @@ def detect_bill_format(text: str) -> str:
     if "BILL OF SUPPLY FOR THE MONTH" in upper_text and "CONSUMER NO" in upper_text and "CONTRACT DEMAND" in upper_text:
         return "MSEDCL_HT"
 
-    if "TAMILNADU GENERATION AND DISTRIBUTION CORPORATION" in upper_text:
+    if "TAMILNADU GENERATION AND DISTRIBUTION CORPORATION" in upper_text or "TAMILNADU POWER DISTRIBUTION CORPORATION" in upper_text:
         return "TANGEDCO"
 
-    if "TANGEDCO" in upper_text:
-        return "TANGEDCO"
-
-    if "PGVCL" in upper_text:
-        return "PGVCL"
-
-    if "PASCHIM GUJARAT VIJ" in upper_text:
-        return "PGVCL"
-
-    if "HT BILL FOR THE MONTH" in upper_text and "CONSUMER NO" in upper_text:
-        return "PGVCL"
-
-    return "GENERIC"
-    upper_text = text.upper()
-
-    if "MAHARASHTRA STATE ELECTRICITY DISTRIBUTION" in upper_text:
-        return "MSEDCL_HT"
-
-    if "MAHADISCOM" in upper_text:
-        return "MSEDCL_HT"
-
-    if "MSEDCL" in upper_text and ("HT-I" in upper_text or "CONTRACT DEMAND" in upper_text):
-        return "MSEDCL_HT"
-
-    if "BILL OF SUPPLY FOR THE MONTH" in upper_text and "CONSUMER NO" in upper_text and "CONTRACT DEMAND" in upper_text:
-        return "MSEDCL_HT"
-
-    if "TAMILNADU GENERATION AND DISTRIBUTION CORPORATION" in upper_text:
-        return "TANGEDCO"
-
-    if "TANGEDCO" in upper_text:
+    if "TANGEDCO" in upper_text or "TNPDCL" in upper_text:
         return "TANGEDCO"
 
     if "PGVCL" in upper_text:
@@ -210,6 +181,7 @@ def detect_bill_format(text: str) -> str:
         return "PGVCL"
 
     return "GENERIC"
+
 
 
 def build_confidence_and_warnings(bill: Dict) -> Tuple[int, List[str]]:
@@ -476,10 +448,54 @@ def extract_pgvcl_bill_summary_amounts(lines: List[str], text: str) -> Dict[str,
     return result
 
 
+def extract_generic_consumer_details(text: str) -> Dict[str, str]:
+    lines = get_lines(text)
+    consumer_number = ""
+    consumer_name = ""
+    tariff = ""
+
+    for index, line in enumerate(lines):
+        upper_line = line.upper()
+
+        if not consumer_number and any(x in upper_line for x in ["CONSUMER", "ACCOUNT", "BP NO", "CA NO", "CLIENT ID"]):
+            match = re.search(r"(?:CONSUMER\s*NO|ACCOUNT\s*NO|BP\s*NO|CA\s*NO|CLIENT\s*ID|CONTRACT\s*NO)\.?\s*:?\s*([0-9A-Za-z\-]+)", upper_line)
+            if match:
+                consumer_number = match.group(1)
+            else:
+                for candidate in lines[index:index + 4]:
+                    number_match = re.search(r"\b([0-9]{5,15})\b", candidate)
+                    if number_match:
+                        consumer_number = number_match.group(1)
+                        break
+
+        if not consumer_name and ("NAME" in upper_line) and "ADDRESS" not in upper_line and len(upper_line) > 5:
+            name_match = re.search(r"(?:NAME|CONSUMER NAME|CLIENT NAME|COMPANY NAME|CUSTOMER NAME)\s*:?\s*(.*)", line, re.IGNORECASE)
+            if name_match and len(name_match.group(1).strip()) > 3:
+                consumer_name = name_match.group(1).strip()
+            else:
+                if index + 1 < len(lines):
+                    consumer_name = lines[index+1].strip()
+
+        if not tariff and any(x in upper_line for x in ["TARIFF", "CATEGORY", "RATE", "CLASS"]):
+            tariff_match = re.search(r"(?:TARIFF|CATEGORY|BILLING CATEGORY|RATE|CLASS)\s*:?\s*(.*)", line, re.IGNORECASE)
+            if tariff_match and len(tariff_match.group(1).strip()) > 1:
+                tariff = tariff_match.group(1).strip()
+            else:
+                if index + 1 < len(lines):
+                    tariff = lines[index+1].strip()
+
+    return {
+        "consumerNumber": consumer_number,
+        "consumerName": consumer_name,
+        "tariffCategory": tariff,
+    }
+
+
 def parse_pgvcl_bill(text: str, source_file: str) -> Dict:
     lines = get_lines(text)
 
     month = find_month_generic(text)
+    consumer_details = extract_generic_consumer_details(text)
 
     demand_data = extract_pgvcl_top_demand_block(lines)
     energy_data = extract_pgvcl_energy_block(lines)
@@ -495,6 +511,10 @@ def parse_pgvcl_bill(text: str, source_file: str) -> Dict:
 
     bill = {
         "month": month,
+        "consumerNumber": consumer_details.get("consumerNumber", ""),
+        "consumerName": consumer_details.get("consumerName", ""),
+        "discom": "PGVCL",
+        "tariffCategory": consumer_details.get("tariffCategory", ""),
         "contractDemandKVA": round(demand_data["contractDemandKVA"], 2),
         "actualDemandKVA": round(demand_data["actualDemandKVA"], 2),
         "billingDemandKVA": round(demand_data["billingDemandKVA"], 2),
@@ -525,20 +545,53 @@ def parse_tangedco_bill(text: str, source_file: str) -> Dict:
     joined_text = "\n".join(lines)
 
     month = find_month_generic(joined_text)
+    consumer_details = extract_generic_consumer_details(text)
+
+    # TANGEDCO specific consumer overrides
+    name_match = re.search(r"To:\s*(.*)", joined_text, re.IGNORECASE)
+    if name_match:
+        consumer_details["consumerName"] = name_match.group(1).strip()
+
+    tariff_match = re.search(r"Tariff App\. / Bld\.\s*([^ \n]+(?:\s+/\s+[^ \n]+)?)", joined_text, re.IGNORECASE)
+    if tariff_match:
+        consumer_details["tariffCategory"] = tariff_match.group(1).strip()
+
+    # Extract City from Tamil Nadu PIN code format (6xxxxx)
+    pin_match = re.search(r"(?:^|\n)\s*([A-Za-z]+)\s*-\s*6\d{2}\s*\d{3}\b", joined_text, re.IGNORECASE)
+    if pin_match:
+        city = pin_match.group(1).strip().title()
+        consumer_details["location"] = f"{city}, Tamil Nadu"
+    else:
+        consumer_details["location"] = "Tamil Nadu"
 
     contract_demand = find_first_number_after_label(
         joined_text,
         r"Permitted MD\s*:?\s*([0-9,]+(?:\.[0-9]+)?)\s*KVA",
     )
+    if contract_demand <= 0:
+        cd_match = re.search(r"([0-9,]+(?:\.[0-9]+)?)\s*KVA", joined_text, re.IGNORECASE)
+        if cd_match:
+            contract_demand = to_number(cd_match.group(1))
 
     supply_voltage = find_first_number_after_label(
         joined_text,
         r"Supply Voltage\s*:?\s*([0-9,]+(?:\.[0-9]+)?)\s*KV",
     )
+    if supply_voltage <= 0:
+        sv_match = re.search(r"([0-9,]+(?:\.[0-9]+)?)\s*KV", joined_text, re.IGNORECASE)
+        if sv_match:
+            supply_voltage = to_number(sv_match.group(1))
 
     energy_charge = find_money_after_label(joined_text, "Total Energy Charges")
     demand_charge = find_money_after_label(joined_text, "Demand Charges")
-    total_bill_amount = find_money_after_label(joined_text, "Net Amount Payable")
+    
+    total_bill_amount = 0.0
+    net_payable_match = re.search(r"([0-9,]+(?:\.[0-9]{2}))\s*Net Amount Payable", joined_text, re.IGNORECASE)
+    if net_payable_match:
+        total_bill_amount = to_number(net_payable_match.group(1))
+    
+    if total_bill_amount <= 0:
+        total_bill_amount = find_money_after_label(joined_text, "Net Amount Payable")
 
     if total_bill_amount <= 0:
         total_bill_amount = find_money_after_label(joined_text, "Assessment Amount")
@@ -549,26 +602,49 @@ def parse_tangedco_bill(text: str, source_file: str) -> Dict:
     kwh = 0.0
     kvah = 0.0
     actual_demand = 0.0
+    power_factor = 0.0
 
-    slot_c_match = re.search(
-        r"SLOT TYPE C.*?Consumption\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)",
+    # Try to extract actual demand from tabular format: Recorded Demand ... Normal 7000 4200.00
+    demand_tabular = re.search(r"DEMAND CALCULATION.*?Normal\s+[0-9,]+(?:\.[0-9]+)?\s+([0-9,]+(?:\.[0-9]+)?)", joined_text, re.IGNORECASE | re.DOTALL)
+    if demand_tabular:
+        actual_demand = to_number(demand_tabular.group(1))
+
+    slot_c_matches = re.finditer(
+        r"C\s*SLOT TYPE.*?([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s*Consumption",
         joined_text,
         re.IGNORECASE | re.DOTALL,
     )
-
-    if slot_c_match:
-        kwh = to_number(slot_c_match.group(1))
-        kvah = to_number(slot_c_match.group(2))
-        actual_demand = to_number(slot_c_match.group(4))
+    
+    for match in slot_c_matches:
+        kwh += to_number(match.group(1))
+        kvah += to_number(match.group(2))
+        demand = to_number(match.group(4))
+        if demand > actual_demand:
+            actual_demand = demand
 
     if kwh <= 0:
         industrial_match = re.search(
-            r"Industrial Consumption\s+[0-9.]+\s+per unit\s+([0-9,]+(?:\.[0-9]+)?)",
+            r"1\.\s*Industrial Consumption.*?([0-9,]{3,}(?:\.[0-9]+)?)",
             joined_text,
-            re.IGNORECASE,
+            re.IGNORECASE | re.DOTALL,
         )
         if industrial_match:
             kwh = to_number(industrial_match.group(1))
+
+    if kvah <= 0:
+        kvah_match = re.search(
+            r"KVAH\s+RKVAH\s+Power Factor\s*([0-9,]+(?:\.[0-9]+)?)\s*(1\.00|0\.[0-9]{2})([0-9,]+(?:\.[0-9]+)?)",
+            joined_text,
+            re.IGNORECASE,
+        )
+        if kvah_match:
+            kvah = to_number(kvah_match.group(1))
+            pf_from_match = to_number(kvah_match.group(2))
+            if pf_from_match > 0:
+                power_factor = pf_from_match
+            if kwh <= 0 and pf_from_match > 0:
+                # Approximate kWh if missing
+                kwh = kvah * pf_from_match
 
     billing_demand = 0.0
     min_billing_demand = 0.0
@@ -594,7 +670,7 @@ def parse_tangedco_bill(text: str, source_file: str) -> Dict:
         min_billing_demand = billed_demand
 
     demand_charge_line_match = re.search(
-        r"Demand Charges\s+([0-9,]+(?:\.[0-9]+)?)\s+per KVA\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)",
+        r"([0-9,]+(?:\.[0-9]+)?)\s*per KVA\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)",
         joined_text,
         re.IGNORECASE,
     )
@@ -612,8 +688,28 @@ def parse_tangedco_bill(text: str, source_file: str) -> Dict:
         if demand_charge <= 0:
             demand_charge = demand_charge_from_line
 
-    power_factor = 0.0
-    if kwh > 0 and kvah > 0:
+    if billing_demand <= 0 and actual_demand > 0:
+        billing_demand = actual_demand
+
+    if contract_demand <= 0:
+        # Fallback for Permitted MD
+        md_match = re.search(
+            r"(?:Permitted MD|SANCTIONED DEMAND)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+            joined_text,
+            re.IGNORECASE,
+        )
+        if md_match:
+            contract_demand = to_number(md_match.group(1))
+        else:
+            md_match2 = re.search(
+                r"([0-9,]+(?:\.[0-9]+)?)\s*KVA\s+HT",
+                joined_text,
+                re.IGNORECASE,
+            )
+            if md_match2:
+                contract_demand = to_number(md_match2.group(1))
+
+    if power_factor <= 0 and kwh > 0 and kvah > 0:
         power_factor = min(kwh / kvah, 1)
 
     other_charges = total_bill_amount - energy_charge - demand_charge
@@ -622,6 +718,10 @@ def parse_tangedco_bill(text: str, source_file: str) -> Dict:
 
     bill = {
         "month": month,
+        "consumerNumber": consumer_details.get("consumerNumber", ""),
+        "consumerName": consumer_details.get("consumerName", ""),
+        "discom": "TANGEDCO",
+        "tariffCategory": consumer_details.get("tariffCategory", ""),
         "contractDemandKVA": round(contract_demand, 2),
         "actualDemandKVA": round(actual_demand, 2),
         "billingDemandKVA": round(billing_demand, 2),
@@ -695,7 +795,7 @@ def find_amount_by_nearby_label(text: str, label_pattern: str) -> float:
                 normalize_amount(value)
                 for value in re.findall(r"-?\s*[0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?", window)
             ]
-            sensible = [amount for amount in amounts if amount > 0]
+            sensible = [amount for amount in amounts if 0 < amount < 10000000]
             if sensible:
                 return max(sensible)
     return 0.0
@@ -875,21 +975,7 @@ def extract_msedcl_oa_demand_near_rkvah(lines: List[str]) -> Dict[str, float]:
             result["billingDemandKVA"] = numeric_before[-2]
             result["actualDemandKVA"] = numeric_before[-1]
             return result
-            # Final override for MSEDCL Open Access bills.
-    # Prefer rounded payable amount over TOTAL CURRENT BILL.
-    normalized_text = re.sub(r"\s+", " ", text or "")
 
-    rounded_payable_match = re.search(
-        r"Total\s+Bill\s+Amount\s*\(Rounded\)\s*Rs\.?\s*([0-9,]+(?:\.[0-9]+)?)",
-        normalized_text,
-        re.IGNORECASE,
-    )
-
-    if rounded_payable_match:
-        rounded_payable_amount = normalize_amount(rounded_payable_match.group(1))
-
-        if rounded_payable_amount >= 1000:
-            result["totalBillAmount"] = rounded_payable_amount
 
     return result
 
@@ -1238,7 +1324,7 @@ def extract_msedcl_charge_values(text: str) -> Dict[str, float]:
     # Example:
     # Total Bill Amount (Rounded) Rs. 1,22,18,590.00
     rounded_payable_match = re.search(
-        r"Total\s+Bill\s+Amount\s*\(Rounded\)\s*Rs\.?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"Total\s+Bill(?:\s+Amount)?\s*\(Rounded\)\s*(?:Rs\.?)?[\s\n]*([0-9,]+(?:\.[0-9]+)?)",
         text,
         re.IGNORECASE,
     )
@@ -1289,7 +1375,7 @@ def extract_msedcl_charge_values(text: str) -> Dict[str, float]:
      # MSEDCL Open Access payable amount.
     # Prefer payable rounded amount for dashboard/proposal.
     rounded_payable_match = re.search(
-        r"Total\s+Bill\s+Amount\s*\(Rounded\)\s*Rs\.?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"Total\s+Bill(?:\s+Amount)?\s*\(Rounded\)\s*(?:Rs\.?)?[\s\n]*([0-9,]+(?:\.[0-9]+)?)",
         text,
         re.IGNORECASE,
     )
@@ -1302,12 +1388,20 @@ def extract_msedcl_charge_values(text: str) -> Dict[str, float]:
     # If payable rounded amount is not available, use total current bill.
     if result["totalBillAmount"] <= 0:
         current_bill_match = re.search(
-            r"TOTAL\s+CURRENT\s+BILL\s*\(A\s*\+\s*B\)\s*([0-9,]+(?:\.[0-9]+)?)",
+            r"TOTAL\s+CURRENT\s+BILL\s*\(A\s*\+\s*B\)[\s\n]*([0-9,]+(?:\.[0-9]+)?)",
             text,
             re.IGNORECASE,
         )
         if current_bill_match:
             result["totalBillAmount"] = normalize_amount(current_bill_match.group(1))
+            
+    if result["totalBillAmount"] < 1000:
+        due_amount_match = re.search(
+            r"\d{2}/\d{2}/\d{4}\s+([1-9][0-9,]{3,}(?:\.[0-9]+)?)", 
+            text
+        )
+        if due_amount_match:
+            result["totalBillAmount"] = normalize_amount(due_amount_match.group(1))
 
     # Demand charge in MSEDCL OA bill = Billing Demand x Rs.650/kVA.
     # Example: 1425 x 650 = 926250.
@@ -1466,75 +1560,8 @@ def apply_msedcl_ocr_fallbacks(bill: Dict, text: str, source_file: str) -> Dict:
     )
 
     if is_globia_bill:
-        # Verified OCR fallback for the uploaded GLOBIA CREATIONS MSEDCL photo bill.
-        # These values are applied only when this specific consumer is identified.
-        if bill.get("month", "") in ["", "PDF Bill"]:
-            bill["month"] = "APR-2026"
-
-        # Override noisy OCR names such as AGLO / SLOBIA / ACREATK INS.
-        bill["consumerName"] = "GLOBIA CREATIONS"
-        bill["consumerNumber"] = bill.get("consumerNumber") or "410252019557"
-        bill["tariffCategory"] = bill.get("tariffCategory") or "HT-I A"
-
-        if bill.get("contractDemandKVA", 0) <= 0:
-            bill["contractDemandKVA"] = 120.0
-
-        if bill.get("connectedLoadKW", 0) <= 0:
-            bill["connectedLoadKW"] = 128.69
-
-        if bill.get("sanctionedLoadKW", 0) <= 0:
-            bill["sanctionedLoadKW"] = 128.69
-
-        if bill.get("actualDemandKVA", 0) <= 0:
-            # Front-page billing history OCR repeatedly shows demand around 48 kVA.
-            bill["actualDemandKVA"] = 48.0
-
-        if bill.get("billingDemandKVA", 0) <= 0:
-            bill["billingDemandKVA"] = 52.0
-
-        if bill.get("minBillingDemandKVA", 0) <= 0:
-            bill["minBillingDemandKVA"] = 52.0
-
-        if bill.get("kWh", 0) <= 0:
-            # OCR front-page history reads APR-2026 units as 25095.
-            bill["kWh"] = 25095.0
-
-        if bill.get("powerFactor", 0) <= 0:
-            # Back-page OCR reads PF/Billed PF as 707; normalize to 0.707.
-            bill["powerFactor"] = 0.707
-
-        if bill.get("kVAh", 0) <= 0 and bill.get("kWh", 0) > 0 and bill.get("powerFactor", 0) > 0:
-            bill["kVAh"] = round(bill["kWh"] / bill["powerFactor"], 2)
-
-        if bill.get("demandCharge", 0) <= 0:
-            bill["demandCharge"] = 21840.0
-
-        if bill.get("energyCharge", 0) <= 0:
-            # OCR from billing table is weak; fallback from visible bill charge table.
-            bill["energyCharge"] = 191430.0
-
-        if bill.get("totalBillAmount", 0) <= 0 and ocr_amounts["totalBillAmount"] > 0:
-            bill["totalBillAmount"] = ocr_amounts["totalBillAmount"]
-
-        if bill.get("totalBillAmount", 0) <= 0:
-            bill["totalBillAmount"] = 282550.0
-
-        # Recalculate other charges after OCR fallback values are filled.
-        known_charges = (
-            float(bill.get("demandCharge", 0) or 0)
-            + float(bill.get("energyCharge", 0) or 0)
-            + float(bill.get("todCharges", 0) or 0)
-            + float(bill.get("facCharge", 0) or 0)
-            + float(bill.get("wheelingCharge", 0) or 0)
-            + float(bill.get("electricityDuty", 0) or 0)
-            + float(bill.get("taxOnSale", 0) or 0)
-            + float(bill.get("gridSupportCharge", 0) or 0)
-        )
-        if bill.get("totalBillAmount", 0) > known_charges:
-            bill["otherCharges"] = round(bill["totalBillAmount"] - known_charges, 2)
-
         existing_notes = bill.get("extractionWarnings") or []
-        existing_notes.append("OCR photo bill fallback applied. Please manually verify kWh, PF, kVAh and charge breakup from original bill image.")
+        existing_notes.append("OCR photo bill detected. Please manually verify kWh, PF, kVAh and charge breakup from original bill image.")
         bill["extractionWarnings"] = existing_notes
 
     # Generic OCR amount fallback for other image bills.
@@ -1553,6 +1580,52 @@ def parse_msedcl_ht_bill(text: str, source_file: str) -> Dict:
     master_values = extract_msedcl_master_values(text)
     consumption_values = extract_msedcl_consumption_values(text)
     charge_values = extract_msedcl_charge_values(text)
+
+    # --- OCR / HORIZONTAL FALLBACKS FOR MSEDCL ---
+    if master_values["contractDemandKVA"] <= 0:
+        cd_match = re.search(r"Contract[\s\S]{0,80}?Demand(?:\s*\(KVA\s*[:;]?\s*)?([0-9,]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        if cd_match:
+            master_values["contractDemandKVA"] = to_number(cd_match.group(1))
+
+    if consumption_values["kWh"] <= 0 or consumption_values["kVAh"] <= 0:
+        cons_match = re.search(r"Total Consumption\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)\s*(?:([0-9,]+(?:\.[0-9]+)?))?\s*(?:([0-9,]+(?:\.[0-9]+)?))?\s*(?:([0-9,]+(?:\.[0-9]+)?))?", text, re.IGNORECASE)
+        if cons_match:
+            consumption_values["kWh"] = to_number(cons_match.group(1))
+            consumption_values["kVAh"] = to_number(cons_match.group(2))
+            if cons_match.group(6):
+                consumption_values["actualDemandKVA"] = to_number(cons_match.group(6))
+
+    if consumption_values["billingDemandKVA"] <= 0:
+        bd_match = re.search(r"Billed Demand(?:\s*\(KVA\))?\s*([0-9,]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        if bd_match:
+            consumption_values["billingDemandKVA"] = to_number(bd_match.group(1))
+
+    if charge_values["demandCharge"] <= 0:
+        dc_match = re.search(r"Demand Charges?\s*([0-9,]{3,}(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        if dc_match:
+            charge_values["demandCharge"] = normalize_amount(dc_match.group(1))
+
+    if charge_values["energyCharge"] <= 0:
+        ec_match = re.search(r"Energy Charges?\s*([0-9,]{3,}(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        if ec_match:
+            charge_values["energyCharge"] = normalize_amount(ec_match.group(1))
+
+    if consumption_values["powerFactor"] <= 0 or consumption_values["powerFactor"] > 1:
+        pf_match = re.search(r"B[il]+ed[\s\S]{0,10}?P\.?F\.?\s*([0-9,]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        if pf_match:
+            consumption_values["powerFactor"] = to_number(pf_match.group(1))
+
+    if consumption_values["actualDemandKVA"] <= 0:
+        # Match corrupted OCR like: 13.090)_—=—«22.8 20) -> 22.820
+        amd_match = re.search(r"Current\s+\d{2}-\d{2}-\d{4}.*?[^\n0-9]([0-9]{1,3}(?:\.[0-9\s]+)?)\)", text, re.IGNORECASE)
+        if amd_match:
+            consumption_values["actualDemandKVA"] = to_number(amd_match.group(1).replace(" ", ""))
+
+    if consumption_values["billingDemandKVA"] <= 0:
+        # Match corrupted OCR like: Demand(KVA) : 23.20 KY)
+        bd_match = re.search(r"Demand\s*\(\s*KVA\s*\)\s*:\s*([0-9,]+(?:\.[0-9]+)?)\s*K", text, re.IGNORECASE)
+        if bd_match:
+            consumption_values["billingDemandKVA"] = to_number(bd_match.group(1))
 
     demand_charge = charge_values["demandCharge"]
     energy_charge = charge_values["energyCharge"]
@@ -1653,7 +1726,7 @@ def parse_msedcl_ht_bill(text: str, source_file: str) -> Dict:
     # Example in bill:
     # Total Bill Amount (Rounded) Rs. 74,05,370.00
     rounded_payable_match = re.search(
-        r"Total\s+Bill\s+Amount\s*\(Rounded\)\s*Rs\.?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"Total\s+Bill(?:\s+Amount)?\s*\(Rounded\)\s*(?:Rs\.?)?[\s\n]*([0-9,]+(?:\.[0-9]+)?)",
         normalized_text,
         re.IGNORECASE,
     )
@@ -1662,6 +1735,14 @@ def parse_msedcl_ht_bill(text: str, source_file: str) -> Dict:
 
         if rounded_payable_amount >= 1000:
             bill["totalBillAmount"] = round(rounded_payable_amount, 2)
+
+    if bill.get("totalBillAmount", 0) < 1000:
+        due_amount_match = re.search(
+            r"\d{2}/\d{2}/\d{4}\s+([1-9][0-9,]{3,}(?:\.[0-9]+)?)", 
+            normalized_text
+        )
+        if due_amount_match:
+            bill["totalBillAmount"] = round(normalize_amount(due_amount_match.group(1)), 2)
 
     # Recalculate other charges after final payable correction.
     known_charges = (
@@ -2045,30 +2126,41 @@ def parse_upcl_bill(text: str, source_file: str) -> Dict:
 
 def parse_generic_bill(text: str, source_file: str) -> Dict:
     month = find_month_generic(text)
+    consumer_details = extract_generic_consumer_details(text)
 
     contract_demand = find_first_number_after_label(
         text,
-        r"Contract Demand\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"(?:Contract Demand|Sanctioned Load|Sanctioned Demand|CD|Connected Load)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
     )
 
     actual_demand = find_first_number_after_label(
         text,
-        r"(?:Actual Maximum Demand|Actual Max Demand|Recorded Demand|Maximum Demand)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"(?:Actual Maximum Demand|Actual Max Demand|Recorded Demand|Maximum Demand|MD|Max Demand)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
     )
 
     billing_demand = find_first_number_after_label(
         text,
-        r"Billing Demand\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"(?:Billing Demand|Billed Demand|Bill Demand|Min Billing Demand)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
     )
 
     kwh = find_first_number_after_label(
         text,
-        r"(?:kWh|KWH)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"(?:kWh|KWH|Units Consumed|Total Units|Consumption)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
     )
 
     kvah = find_first_number_after_label(
         text,
-        r"(?:kVAh|KVAH)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+        r"(?:kVAh|KVAH|Total kVAh)\s*:?\s*([0-9,]+(?:\.[0-9]+)?)",
+    )
+
+    demand_charge = find_first_number_after_label(
+        text,
+        r"(?:Demand Charges?|Fixed Charges?|Fixed/Demand Charges?)\s*:?\s*(?:Rs\.?)?\s*([0-9,]+(?:\.[0-9]+)?)",
+    )
+
+    energy_charge = find_first_number_after_label(
+        text,
+        r"(?:Energy Charges?)\s*:?\s*(?:Rs\.?)?\s*([0-9,]+(?:\.[0-9]+)?)",
     )
 
     total_bill_amount = 0.0
@@ -2077,6 +2169,10 @@ def parse_generic_bill(text: str, source_file: str) -> Dict:
         "Total Bill Amount",
         "Total Amount Payable",
         "Amount Payable",
+        "Net Payable",
+        "Total Bill",
+        "Current Bill",
+        "Total Amount",
     ]:
         total_bill_amount = find_money_after_label(text, label)
         if total_bill_amount > 0:
@@ -2088,6 +2184,10 @@ def parse_generic_bill(text: str, source_file: str) -> Dict:
 
     bill = {
         "month": month,
+        "consumerNumber": consumer_details.get("consumerNumber", ""),
+        "consumerName": consumer_details.get("consumerName", ""),
+        "discom": "GENERIC",
+        "tariffCategory": consumer_details.get("tariffCategory", ""),
         "contractDemandKVA": round(contract_demand, 2),
         "actualDemandKVA": round(actual_demand, 2),
         "billingDemandKVA": round(billing_demand, 2),
@@ -2095,12 +2195,12 @@ def parse_generic_bill(text: str, source_file: str) -> Dict:
         "kWh": round(kwh, 2),
         "kVAh": round(kvah, 2),
         "powerFactor": round(power_factor, 3),
-        "demandCharge": 0,
-        "energyCharge": 0,
+        "demandCharge": round(demand_charge, 2),
+        "energyCharge": round(energy_charge, 2),
         "pfPenalty": 0,
         "pfIncentive": 0,
         "todCharges": 0,
-        "otherCharges": 0,
+        "otherCharges": round(max(0.0, total_bill_amount - demand_charge - energy_charge), 2),
         "totalBillAmount": round(total_bill_amount, 2),
         "sourceFile": source_file,
         "detectedBillFormat": "GENERIC",
@@ -2368,6 +2468,9 @@ def parse_bill_text(text: str, source_file: str) -> Dict:
     """
     Detect bill format and route to the correct parser.
     """
+    with open("current_bill_dump.txt", "w", encoding="utf-8") as f:
+        f.write(text)
+
     bill_format = detect_bill_format(text)
 
     if bill_format == "MSEDCL_HT":
@@ -2396,6 +2499,7 @@ def parse_pdf_file(file_path: str) -> Dict:
     """
     source_file = Path(file_path).name
     text = extract_bill_text(str(file_path))
+
 
     bill = parse_bill_text(text, source_file)
 

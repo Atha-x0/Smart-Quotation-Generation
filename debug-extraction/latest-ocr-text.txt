@@ -1,0 +1,45 @@
+
+--- OCR IMAGE VARIANT 1 ---
+ACCURACY REVIEW
+Detailed Review & Testing Tools
+Review extracted bill values and make manual corrections wherever required before generating the final proposal.
+Extracted Bill Review
+No bill data loaded yet. Upload a bill PDF or Excel bill file to review extracted values.
+Monthly Bill Data Input
+Edit the billing values below. Dashboard and proposal will update automatically.
+MONTH CDKVA  ACTUALDEMAND- BILLINGDEMAND KWH KVAH PF DEMANDCHARGE ENERGYCHARGE PFPENALTY OTHERCHARGES  TOTALBILL ACTION
+
+
+--- OCR IMAGE VARIANT 2 ---
+ACCURACY REVIEW
+Detailed Review & Testing Tools
+Review extracted bill values and make manual corrections wherever required before generating the final proposal.
+Extracted Bill Review
+No bill data loaded yet. Upload a bill PDF or Excel bill file to review extracted values.
+Monthly Bill Data Input
+Edit the billing values below. Dashboard and proposal will update automatically.
+MONTH CDKVA ACTUALDEMAND  BILLINGDEMAND KWH KVAH PF DEMANDCHARGE ENERGYCHARGE PFPENALTY OTHERCHARGES  TOTALBILL ACTION
+
+
+--- OCR IMAGE VARIANT 3 ---
+ACCURACY REVIEW
+Detailed Review & Testing Tools
+Review extracted bill values and make manual corrections wherever required before generating the final proposal.
+Extracted Bill Review
+No bill data loaded yet. Upload a bill POF or Excel bill file to review extracted values.
+Monthly Bill Data Input
+Edit the billing values below. Dashboard and proposal will update automatically.
+MONTH CDKVA ACTUALDEMAND BILLINGDEMAND KWH KVAH PF DEMANDCHARGE ENERGYCHARGE PFPENALTY OTHERCHARGES  ‘TOTALBILL ACTION
+
+
+--- OCR IMAGE VARIANT 4 ---
+ACCURACY REVIEW
+Detailed Review & Testing Tools
+Review extracted bill values and make manual corrections wherever required before generating the final proposal.
+Extracted Bill Review
+No bill data loaded yet. Upload a bill PDF or Excel bill file to review extracted values.
+Neen A
+| Monthly Bill Data Input
+Edit the billing values below. Dashboard and proposal will update automatically.
+MONTH CDKVA ACTUALDEMAND BILLINGDEMAND KWH KVAH PF DEMANDCHARGE ENERGYCHARGE PFPENALTY OTHERCHARGES  TOTALBILL ACTION
+Su

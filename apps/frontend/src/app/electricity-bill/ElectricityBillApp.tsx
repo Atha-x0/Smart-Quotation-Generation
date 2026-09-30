@@ -1,5 +1,6 @@
 import DetailedReviewPanel from "./components/DetailedReviewPanel";
-import ProjectSetupPanel from "./components/ProjectSetupPanel";
+import UniversalFileUploader from "./components/UniversalFileUploader";
+import ClientDetailsForm from "./components/ClientDetailsForm";
 import DashboardQuickNav from "./components/DashboardQuickNav";
 import ProposalSignature from "./components/ProposalSignature";
 import { useEffect, useState } from "react";
@@ -473,9 +474,19 @@ function getClientDetailsFromBill(
 }
 
 function App() {
+  const [currentStep, setCurrentStep] = useState(0);
   const [client, setClient] = useState<ClientDetails>(defaultClient);
   const [bills, setBills] = useState<BillData[]>(defaultBills);
   const [connectedLoads, setConnectedLoads] = useState<ConnectedLoadData[]>([]);
+  const [signatureData, setSignatureData] = useState({
+    clientSignerName: "",
+    clientSignerDesignation: "",
+    clientAcceptanceDate: new Date().toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }),
+  });
 
   useEffect(() => {
     if (bills.length === 0) {
@@ -487,7 +498,11 @@ function App() {
     setClient((previousClient) =>
       getClientDetailsFromBill(primaryUploadedBill, previousClient)
     );
-  }, [bills]);
+
+    if (currentStep === 0) {
+      setCurrentStep(1);
+    }
+  }, [bills, currentStep]);
 
   const validBills = bills.filter(
   (bill) =>
@@ -506,7 +521,6 @@ const metrics = calculateMetrics(analysisBills);
 const recommendations = generateRecommendations(metrics, {
   connectedLoads,
 });
-
 
 
   const primaryBill = analysisBills[0];
@@ -646,6 +660,8 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
       ? "High priority for connected load validation and operating pattern study"
       : "Medium priority for further validation";
 
+  const proposalData = { client, bills, metrics, connectedLoads, recommendations, signatureData };
+
   return (
     <div className="w-full space-y-6">
       <div className="bg-white px-6 py-6 rounded-2xl border border-slate-200 shadow-sm mb-6 no-print">
@@ -653,23 +669,47 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
         <p className="text-xs font-medium text-slate-500">Structured bill analysis & demand optimization.</p>
       </div>
 
+      {/* Stepper Navigation */}
+      <div className="flex space-x-2 mt-4 overflow-x-auto no-print pb-2">
+        {["Upload", "Setup", "KPIs", "Trends", "Recommendations", "Proposal"].map((step, index) => (
+          <button 
+            key={step} 
+            onClick={() => setCurrentStep(index)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${currentStep === index ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            {index + 1}. {step}
+          </button>
+        ))}
+      </div>
+
       {/* DASHBOARD PHASE 2 - QUICK NAVIGATION */}
-      <DashboardQuickNav />
+      <DashboardQuickNav proposalData={proposalData} />
       
 
       {/* DASHBOARD PHASE 2 - MAIN DASHBOARD BODY */}
       <div className="no-print">
-        {/* DASHBOARD PHASE 2 - COMPACT PROJECT SETUP */}
-        <div id="setup">
-          <ProjectSetupPanel
-            client={client}
-            bills={bills}
-            connectedLoads={connectedLoads}
-            onClientChange={setClient}
-            onBillsChange={setBills}
-            onConnectedLoadsChange={setConnectedLoads}
-          />
-        </div>
+        {/* Step 0: Upload */}
+        {currentStep === 0 && (
+          <div id="upload" className="space-y-6">
+            <UniversalFileUploader
+              onBillsLoaded={setBills}
+              onConnectedLoadsLoaded={setConnectedLoads}
+            />
+            <div className="flex justify-end">
+              <button onClick={() => setCurrentStep(1)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2 px-6 shadow-sm transition-colors">
+                Next: Setup →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Setup */}
+        {currentStep === 1 && (
+          <div id="setup" className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-900 mb-4">Client Details</h2>
+              <ClientDetailsForm client={client} onChange={setClient} />
+            </div>
 
         {/* DASHBOARD STRUCTURE - COLLAPSED DEVELOPER TESTING TOOLS */}
         {/* DETAILED REVIEW SECTION - COLLAPSIBLE REVIEW AND TESTING TOOLS */}
@@ -679,9 +719,16 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
           validation={validation}
           onBillsChange={setBills}
         />
+            <div className="flex justify-between">
+              <button onClick={() => setCurrentStep(0)} className="bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl py-2 px-6 shadow-sm hover:bg-slate-50 transition-colors">← Back</button>
+              <button onClick={() => setCurrentStep(2)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2 px-6 shadow-sm transition-colors">Next: KPIs →</button>
+            </div>
+          </div>
+        )}
 
-        
-
+        {/* Step 2: KPIs */}
+        {currentStep === 2 && (
+          <div className="space-y-6">
         {/* DASHBOARD PHASE 2 - EXECUTIVE KPI DASHBOARD */}
         <section id="kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
@@ -714,7 +761,9 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
             <div className="text-2xl font-extrabold text-slate-900 mt-2">
               {hasConnectedLoadData
                 ? `${totalConnectedKW.toFixed(0)} kW`
-                : "Not uploaded"}
+                : (primaryBill?.connectedLoadKW || 0) > 0 
+                  ? `${primaryBill.connectedLoadKW} kW (Bill)` 
+                  : "Not uploaded"}
             </div>
           </div>
         </section>
@@ -776,9 +825,16 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
             </div>
           </div>
         </section>
+            <div className="flex justify-between">
+              <button onClick={() => setCurrentStep(1)} className="bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl py-2 px-6 shadow-sm hover:bg-slate-50 transition-colors">← Back</button>
+              <button onClick={() => setCurrentStep(3)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2 px-6 shadow-sm transition-colors">Next: Trends →</button>
+            </div>
+          </div>
+        )}
 
-       
-
+        {/* Step 3: Trends */}
+        {currentStep === 3 && (
+          <div className="space-y-6">
         <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6">
           <h2>Monthly Bill Summary</h2>
 
@@ -814,7 +870,16 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
             </table>
           </div>
         </section>
+            <div className="flex justify-between">
+              <button onClick={() => setCurrentStep(2)} className="bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl py-2 px-6 shadow-sm hover:bg-slate-50 transition-colors">← Back</button>
+              <button onClick={() => setCurrentStep(4)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2 px-6 shadow-sm transition-colors">Next: Recommendations →</button>
+            </div>
+          </div>
+        )}
 
+        {/* Step 4: Recommendations */}
+        {currentStep === 4 && (
+          <div className="space-y-6">
         <section id="recommendations" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6 recommendations-panel">
           <h2>Recommendations</h2>
 
@@ -827,11 +892,17 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
             ))}
           </div>
         </section>
-
-        
-        
+            <div className="flex justify-between">
+              <button onClick={() => setCurrentStep(3)} className="bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl py-2 px-6 shadow-sm hover:bg-slate-50 transition-colors">← Back</button>
+              <button onClick={() => setCurrentStep(5)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2 px-6 shadow-sm transition-colors">Generate Proposal →</button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Step 5: Proposal */}
+      {currentStep === 5 && (
+        <div className="space-y-6">
       <section id="proposal" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-6 proposal print-area">
         <div className="proposal-cover">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">SEE-Tech Solutions</p>
@@ -1664,9 +1735,14 @@ const latestPowerFactorMonth = latestPowerFactorBill?.month || "";
         </ul>
 
         <div className="print-signature-page">
-          <ProposalSignature />
+          <ProposalSignature signatureData={signatureData} setSignatureData={setSignatureData} />
         </div>
       </section>
+          <div className="flex justify-start no-print">
+            <button onClick={() => setCurrentStep(4)} className="bg-white border border-slate-200 text-slate-700 font-semibold rounded-xl py-2 px-6 shadow-sm hover:bg-slate-50 transition-colors">← Back to Recommendations</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

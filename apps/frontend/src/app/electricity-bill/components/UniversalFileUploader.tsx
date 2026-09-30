@@ -270,7 +270,7 @@ function UniversalFileUploader({
         </div>
 
         <div className="flex items-center space-x-3 mb-4">
-          <label className="cursor-pointer bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl py-2 px-5 shadow-sm transition-colors text-xs flex items-center justify-center">
+          <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold rounded-xl py-2 px-5 shadow-sm border border-slate-300 transition-colors text-xs flex items-center justify-center">
             Select Files
             <input
               type="file"

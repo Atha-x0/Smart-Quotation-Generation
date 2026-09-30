@@ -46,6 +46,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -809,3 +813,20 @@ async def extract_multiple(files: list[UploadFile] = File(...)) -> Dict[str, Any
             "failedFiles": failed_files,
         },
     }
+
+from fastapi.responses import Response
+from pdf_generator import generate_pdf
+
+@app.post("/api/export-proposal")
+async def export_proposal(request: dict):
+    try:
+        pdf_bytes = generate_pdf(request)
+        return Response(content=pdf_bytes, media_type="application/pdf", headers={
+            "Content-Disposition": "attachment; filename=proposal.pdf"
+        })
+    except Exception as e:
+        return {"error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)# trigger reload

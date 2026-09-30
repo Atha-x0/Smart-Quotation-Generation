@@ -10,9 +10,11 @@ import { AuditService } from './audit.service';
 import { RolesGuard } from './roles.guard';
 import { HsnService } from './hsn.service';
 import { HsnController } from './hsn.controller';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CleanupService } from './cleanup.service';
 
 @Module({
-  imports: [],
+  imports: [ScheduleModule.forRoot()],
   controllers: [AppController, QuotationController, HsnController],
   providers: [
     AppService,
@@ -23,6 +25,7 @@ import { HsnController } from './hsn.controller';
     AuditService,
     RolesGuard,
     HsnService,
+    CleanupService,
   ],
 })
 export class AppModule {}

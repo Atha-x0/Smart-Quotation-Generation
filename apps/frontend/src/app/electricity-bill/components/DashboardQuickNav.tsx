@@ -1,6 +1,10 @@
 import ExportButtons from "./ExportButtons";
 
-function DashboardQuickNav() {
+interface DashboardQuickNavProps {
+  proposalData: any;
+}
+
+function DashboardQuickNav({ proposalData }: DashboardQuickNavProps) {
   return (
     <div className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-sm pb-4 pt-4 border-b border-slate-200 no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
       <nav className="flex bg-slate-100/60 p-1 rounded-xl w-fit">
@@ -12,7 +16,7 @@ function DashboardQuickNav() {
       </nav>
 
       <div>
-        <ExportButtons />
+        <ExportButtons proposalData={proposalData} />
       </div>
     </div>
   );

@@ -1,18 +1,20 @@
 import { useState } from "react";
 
-function ProposalSignature() {
-  // SIGNATURE SECTION - AUTO DATE FOR SEE-TECH SIDE
+interface ProposalSignatureProps {
+  signatureData: {
+    clientSignerName: string;
+    clientSignerDesignation: string;
+    clientAcceptanceDate: string;
+  };
+  setSignatureData: (data: any) => void;
+}
+
+function ProposalSignature({ signatureData, setSignatureData }: ProposalSignatureProps) {
   const today = new Date().toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
-
-  // SIGNATURE SECTION - EDITABLE CLIENT ACCEPTANCE FIELDS
-  // These fields can be typed directly before exporting the proposal.
-  const [clientSignerName, setClientSignerName] = useState("");
-  const [clientSignerDesignation, setClientSignerDesignation] = useState("");
-  const [clientAcceptanceDate, setClientAcceptanceDate] = useState(today);
 
   return (
     <section className="proposal-signature-section">
@@ -57,8 +59,8 @@ function ProposalSignature() {
             <span>Name</span>
             <input
               type="text"
-              value={clientSignerName}
-              onChange={(event) => setClientSignerName(event.target.value)}
+              value={signatureData.clientSignerName}
+              onChange={(event) => setSignatureData({ ...signatureData, clientSignerName: event.target.value })}
               placeholder="Enter client name"
             />
           </label>
@@ -67,9 +69,9 @@ function ProposalSignature() {
             <span>Designation</span>
             <input
               type="text"
-              value={clientSignerDesignation}
+              value={signatureData.clientSignerDesignation}
               onChange={(event) =>
-                setClientSignerDesignation(event.target.value)
+                setSignatureData({ ...signatureData, clientSignerDesignation: event.target.value })
               }
               placeholder="Enter designation"
             />
@@ -79,8 +81,8 @@ function ProposalSignature() {
             <span>Date</span>
             <input
               type="text"
-              value={clientAcceptanceDate}
-              onChange={(event) => setClientAcceptanceDate(event.target.value)}
+              value={signatureData.clientAcceptanceDate}
+              onChange={(event) => setSignatureData({ ...signatureData, clientAcceptanceDate: event.target.value })}
               placeholder="Enter date"
             />
           </label>
